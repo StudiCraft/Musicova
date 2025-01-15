@@ -1,0 +1,22 @@
+body {
+    position: relative; /* Pour que le conteneur soit positionné par rapport à body */
+    background-color: blueviolet;
+  }
+  
+.musicova-title{
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: "DynaPuff", serif;
+    font-weight: 700;
+    font-size: 70px;
+}
