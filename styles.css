@@ -2,7 +2,7 @@ body {
     position: relative; /* Pour que le conteneur soit positionné par rapport à body */
     background-color: blueviolet;
   }
-  
+
 .musicova-title{
     position: fixed;
     top: 0;
