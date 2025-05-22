@@ -40,14 +40,14 @@ class MusicovaApp(QMainWindow):
         logo_path = os.path.join(os.path.dirname(__file__), 'Musicova logo v2.png')
         logo_label = QLabel()
         pixmap = QPixmap(logo_path)
-        scaled_pixmap = pixmap.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        scaled_pixmap = pixmap.scaled(300, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(scaled_pixmap)
         logo_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(logo_label)
 
         # Add title and subtitle
         title_label = QLabel('Musicova')
-        title_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 48px; font-weight: bold;')
+        title_label.setStyleSheet('color: black; font-family: "DynaPuff", sans-serif; font-size: 48px; font-weight: bold;')
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
 
@@ -58,42 +58,19 @@ class MusicovaApp(QMainWindow):
 
         # Add access button
         access_button = QPushButton('Access')
-        access_button.setStyleSheet("""
-            QPushButton {
-                background-color: #333333;
-                color: white;
-                border: none;
-                border-radius: 25px;
-                padding: 15px 30px;
-                font-family: 'DynaPuff', sans-serif;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #444444;
-            }
-        """)
+        access_button.setObjectName("access_button")
         access_button.clicked.connect(self.show_player)
         layout.addWidget(access_button, alignment=Qt.AlignCenter)
 
         # Add theme toggle button
         self.theme_button = QPushButton('🌙')
         self.theme_button.setFixedSize(40, 40)
-        self.theme_button.setStyleSheet("""QPushButton {
-                background-color: transparent;
-                border: none;
-                font-size: 20px;
-                position: absolute;
-                top: 10px;
-                right: 10px;
-            }
-            QPushButton:hover {
-                background-color: rgba(128, 128, 128, 0.2);
-                border-radius: 20px;
-            }
-        """)
         self.theme_button.clicked.connect(self.toggle_theme)
-        layout.addWidget(self.theme_button, alignment=Qt.AlignRight)
+
+        top_bar_layout = QHBoxLayout()
+        top_bar_layout.addStretch(1) # Add stretch to push button to the right
+        top_bar_layout.addWidget(self.theme_button)
+        layout.insertLayout(0, top_bar_layout) # Add this new layout to the main QVBoxLayout
 
         # Set initial theme
         self.apply_theme()
@@ -121,6 +98,34 @@ class MusicovaApp(QMainWindow):
                     color: white;
                 }
             """)
+            self.theme_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #3d3d3d; /* --button-bg in dark mode */
+                    color: #ffffff; /* --button-text in dark mode */
+                    border: none;
+                    border-radius: 20px; /* 50% radius for 40x40px button */
+                    font-size: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a; /* Slightly lighter for hover */
+                }
+            """)
+            if self.centralWidget().findChild(QPushButton, 'access_button'):
+                self.centralWidget().findChild(QPushButton, 'access_button').setStyleSheet("""
+                    QPushButton {
+                        background-color: #3d3d3d; /* --button-bg dark */
+                        color: #ffffff; /* --button-text dark */
+                        border: none;
+                        border-radius: 25px;
+                        padding: 15px 30px;
+                        font-family: 'DynaPuff', sans-serif;
+                        font-size: 18px; /* Close to 1.2rem */
+                        font-weight: bold; /* Close to 600 */
+                    }
+                    QPushButton:hover {
+                        background-color: #4a4a4a; /* Slightly lighter hover for dark mode */
+                    }
+                """)
         else:
             self.setStyleSheet("""
                 QMainWindow, QWidget {
@@ -128,6 +133,34 @@ class MusicovaApp(QMainWindow):
                     color: black;
                 }
             """)
+            self.theme_button.setStyleSheet("""
+                QPushButton {
+                    background-color: white; /* --button-bg in light mode */
+                    color: blueviolet; /* --button-text in light mode */
+                    border: none;
+                    border-radius: 20px; /* 50% radius for 40x40px button */
+                    font-size: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #f0f0f0; /* --hover-bg in light mode */
+                }
+            """)
+            if self.centralWidget().findChild(QPushButton, 'access_button'):
+                self.centralWidget().findChild(QPushButton, 'access_button').setStyleSheet("""
+                    QPushButton {
+                        background-color: white; /* --button-bg light */
+                        color: blueviolet; /* --button-text light */
+                        border: none;
+                        border-radius: 25px;
+                        padding: 15px 30px;
+                        font-family: 'DynaPuff', sans-serif;
+                        font-size: 18px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #f0f0f0; /* --hover-bg light */
+                    }
+                """)
 
 class PlayerWindow(QMainWindow):
     def __init__(self, parent=None):
@@ -163,10 +196,9 @@ class PlayerWindow(QMainWindow):
         self.media_player = QMediaPlayer()
 
         # Add title
-        title_label = QLabel('Musicova Player')
-        title_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 36px; font-weight: bold;')
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
+        self.title_label = QLabel('Musicova Player')
+        self.title_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 100px; font-weight: bold;')
+        self.title_label.setAlignment(Qt.AlignCenter)
 
         # Add import controls container
         self.import_container = QWidget()
@@ -175,40 +207,18 @@ class PlayerWindow(QMainWindow):
         import_layout.setSpacing(10)
 
         self.file_select = QComboBox()
+        self.file_select.setObjectName("file_select_player")
         self.file_select.addItem('Select import type')
         self.file_select.addItem('Choose Folder')
         self.file_select.addItem('Choose File')
         self.file_select.setFixedWidth(200)
-        self.file_select.setStyleSheet("""
-            QComboBox {
-                background-color: white;
-                color: blueviolet;
-                border: none;
-                border-radius: 20px;
-                padding: 8px 15px;
-                font-family: 'DynaPuff', sans-serif;
-            }
-        """)
         import_layout.addWidget(self.file_select)
 
-        import_button = QPushButton('Import')
-        import_button.setFixedWidth(100)
-        import_button.setStyleSheet("""
-            QPushButton {
-                background-color: white;
-                color: blueviolet;
-                border: none;
-                border-radius: 20px;
-                padding: 8px 15px;
-                font-family: 'DynaPuff', sans-serif;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        """)
-        import_button.clicked.connect(self.import_files)
-        import_layout.addWidget(import_button)
+        self.import_button = QPushButton('Import')
+        self.import_button.setObjectName("import_button_player")
+        self.import_button.setFixedWidth(100)
+        self.import_button.clicked.connect(self.import_files)
+        import_layout.addWidget(self.import_button)
 
         layout.addWidget(self.import_container)
 
@@ -230,15 +240,26 @@ class PlayerWindow(QMainWindow):
         # Dictionary to store media players and their controls
         self.track_players = {}
 
-        # Add back button
-        back_button = QPushButton('Back to Home')
-        back_button.clicked.connect(self.go_back)
-        layout.addWidget(back_button)
+        # Create buttons
+        self.back_button = QPushButton('Back to Home')
+        self.back_button.setObjectName("back_button_player")
+        self.back_button.clicked.connect(self.go_back)
 
-        theme_button = QPushButton('Toggle Theme')
-        theme_button.clicked.connect(self.parent.toggle_theme)
-        layout.addWidget(theme_button)
-        self.apply_theme()
+        self.theme_button = QPushButton('🌙') # Initial text, apply_theme will correct it
+        self.theme_button.setFixedSize(40, 40)
+        self.theme_button.clicked.connect(self.parent.toggle_theme)
+
+        # Top controls layout
+        top_controls_layout = QHBoxLayout()
+        top_controls_layout.addWidget(self.back_button)
+        top_controls_layout.addStretch(1)
+        top_controls_layout.addWidget(self.theme_button)
+
+        # Add widgets to main layout in new order
+        layout.addLayout(top_controls_layout)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.import_container)
+        layout.addWidget(cards_scroll)
 
         # Apply theme
         self.apply_theme()
@@ -501,6 +522,83 @@ class PlayerWindow(QMainWindow):
                     color: white;
                 }
             """)
+            self.theme_button.setText('☀️')
+            self.theme_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #3d3d3d; /* --button-bg dark */
+                    color: #ffffff; /* --button-text dark */
+                    border: none;
+                    border-radius: 20px;
+                    font-size: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                }
+            """)
+            self.back_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #3d3d3d; /* --button-bg dark */
+                    color: #ffffff; /* --button-text dark */
+                    border: none;
+                    border-radius: 25px; /* from .back-button */
+                    padding: 12px 24px; /* from .back-button */
+                    font-family: "DynaPuff", sans-serif; /* from .back-button */
+                    font-size: 16px; /* 1rem from .back-button (assuming 1rem=16px) */
+                    font-weight: 600; /* from .back-button */
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a; /* Consistent darker hover */
+                }
+            """)
+            # Common style for file_select
+            file_select_style = """
+                QComboBox {{
+                    border: none;
+                    border-radius: 25px;
+                    padding: 15px 30px;
+                    font-family: "DynaPuff", sans-serif;
+                    font-size: 18px; /* Approx 1.2rem */
+                    font-weight: 600;
+                }}
+                QComboBox QAbstractItemView {{ /* Style for the dropdown list itself */
+                    border: 1px solid #3d3d3d; /* Or themed border */
+                    /* Other dropdown styles can be added if needed */
+                }}
+            """
+            self.file_select.setStyleSheet(file_select_style + """
+                QComboBox {
+                    background-color: #3d3d3d; /* --button-bg dark */
+                    color: #ffffff; /* --button-text dark */
+                }
+                QComboBox:hover {
+                    background-color: #4a4a4a; /* Consistent hover */
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #2d2d2d;
+                    color: white;
+                    selection-background-color: #3d3d3d;
+                }
+            """)
+            # Common style for import_button
+            import_button_style = """
+                QPushButton {{
+                    border: none;
+                    border-radius: 25px;
+                    padding: 15px 30px;
+                    font-family: "DynaPuff", sans-serif;
+                    font-size: 18px; /* Approx 1.2rem */
+                    font-weight: 600;
+                }}
+            """
+            self.import_button.setStyleSheet(import_button_style + """
+                QPushButton {
+                    background-color: #3d3d3d; /* --button-bg dark */
+                    color: #ffffff; /* --button-text dark */
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a; /* Consistent hover */
+                }
+            """)
         else:
             self.setStyleSheet("""
                 QMainWindow, QWidget {
@@ -580,6 +678,83 @@ class PlayerWindow(QMainWindow):
                 }
                 QWidget#player_card QLabel {
                     color: black;
+                }
+            """)
+            self.theme_button.setText('🌙')
+            self.theme_button.setStyleSheet("""
+                QPushButton {
+                    background-color: white; /* --button-bg light */
+                    color: blueviolet; /* --button-text light */
+                    border: none;
+                    border-radius: 20px;
+                    font-size: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #f0f0f0; /* --hover-bg light */
+                }
+            """)
+            # Common style for file_select
+            file_select_style = """
+                QComboBox {{
+                    border: none;
+                    border-radius: 25px;
+                    padding: 15px 30px;
+                    font-family: "DynaPuff", sans-serif;
+                    font-size: 18px; /* Approx 1.2rem */
+                    font-weight: 600;
+                }}
+                QComboBox QAbstractItemView {{ /* Style for the dropdown list itself */
+                    border: 1px solid #3d3d3d; /* Or themed border */
+                    /* Other dropdown styles can be added if needed */
+                }}
+            """
+            self.file_select.setStyleSheet(file_select_style + """
+                QComboBox {
+                    background-color: white; /* --button-bg light */
+                    color: blueviolet; /* --button-text light */
+                }
+                QComboBox:hover {
+                    background-color: #f0f0f0; /* --hover-bg light */
+                }
+                QComboBox QAbstractItemView {
+                    background-color: white;
+                    color: blueviolet;
+                    selection-background-color: #f0f0f0;
+                }
+            """)
+            # Common style for import_button
+            import_button_style = """
+                QPushButton {{
+                    border: none;
+                    border-radius: 25px;
+                    padding: 15px 30px;
+                    font-family: "DynaPuff", sans-serif;
+                    font-size: 18px; /* Approx 1.2rem */
+                    font-weight: 600;
+                }}
+            """
+            self.import_button.setStyleSheet(import_button_style + """
+                QPushButton {
+                    background-color: white; /* --button-bg light */
+                    color: blueviolet; /* --button-text light */
+                }
+                QPushButton:hover {
+                    background-color: #f0f0f0; /* --hover-bg light */
+                }
+            """)
+            self.back_button.setStyleSheet("""
+                QPushButton {
+                    background-color: white; /* --button-bg light */
+                    color: blueviolet; /* --button-text light */
+                    border: none;
+                    border-radius: 25px;
+                    padding: 12px 24px;
+                    font-family: "DynaPuff", sans-serif;
+                    font-size: 16px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #f0f0f0; /* --hover-bg light */
                 }
             """)
 
