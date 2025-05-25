@@ -78,7 +78,7 @@ class MusicovaApp(QMainWindow):
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
 
-        subtitle_label = QLabel('The Open-Source music player')
+        subtitle_label = QLabel('The Open-Source Offline Music Player')
         subtitle_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 24px;')
         subtitle_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle_label)
