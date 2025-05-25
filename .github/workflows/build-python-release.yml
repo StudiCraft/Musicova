@@ -84,7 +84,7 @@ jobs:
           # your-library-name==1.0.0
           # another-library
           # Then, uncomment the following line:
-          # pip install -r requirements.txt
+          pip install -r requirements.txt
         working-directory: ./Python # Ensure pip install runs from the Python directory
 
       - name: Compile Python script to executable
