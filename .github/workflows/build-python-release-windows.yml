@@ -1,0 +1,67 @@
+name: Build Python Executable and Create Release
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+    paths:
+      - 'Python/**' # Only trigger if changes are made within the Python folder
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest # Use a Windows runner to build a Windows executable
+    permissions:
+      contents: write # To create releases and upload assets
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x.x' # Or your desired Python version (e.g., '3.10', '3.11')
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller # Install PyInstaller
+          # If your Python script has other dependencies, create a requirements.txt in Python/
+          # For example: pip install -r Python/requirements.txt
+        working-directory: ./Python # Run pip install from the Python directory
+
+      - name: Compile Python script to executable
+        run: pyinstaller --onefile --windowed musicova.py # Use --windowed for a GUI app, remove for console
+        working-directory: ./Python # Run pyinstaller from the Python directory
+
+      - name: Get current commit SHA
+        id: commit_sha
+        run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN has permissions to create releases
+        with:
+          tag_name: musicova-windows-${{ steps.commit_sha.outputs.SHA }} # Example: v1.0.0-build-abcdef1
+          release_name: Musicova for Windows version ${{ steps.commit_sha.outputs.SHA }}
+          body: |
+            Automated build of musicova.py executable from commit ${{ steps.commit_sha.outputs.SHA }}.
+            See changes in the Python folder.
+          draft: false # Set to true if you want to manually publish later
+          prerelease: false # Set to true for pre-release builds
+
+      - name: Upload Windows Executable to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./Python/dist/musicova.exe # Path to the generated executable
+          asset_name: musicova-windows-${{ steps.commit_sha.outputs.SHA }}.exe # Name of the file in the release
+          asset_content_type: application/vnd.microsoft.portable-executable # MIME type for .exe
+
+      # Optional: Add jobs for other OS (macOS, Linux)
+      # You would duplicate the build-and-release job, change `runs-on`
+      # and `asset_path`/`asset_name`/`asset_content_type` accordingly.
