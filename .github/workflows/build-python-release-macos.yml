@@ -1,0 +1,67 @@
+name: Build Python Executable for macOS and Create Release
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+    paths:
+      - 'Python/**' # Only trigger if changes are made within the Python folder
+
+jobs:
+  build-and-release-macos:
+    runs-on: macos-latest # Use a macOS runner to build a macOS executable
+    permissions:
+      contents: write # To create releases and upload assets
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use the latest stable Python 3 version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          # If your Python script has other dependencies, create a requirements.txt in Python/
+          # For example: pip install -r Python/requirements.txt
+        working-directory: ./Python # Run pip install from the Python directory
+
+      - name: Compile Python script to executable (macOS)
+        run: pyinstaller --onefile --windowed musicova.py # --windowed helps create a .app bundle on macOS
+        working-directory: ./Python # PyInstaller will output to ./Python/dist/
+
+      - name: Get current commit SHA
+        id: commit_sha
+        run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN has permissions to create releases
+        with:
+          tag_name: musicova-macos-${{ steps.commit_sha.outputs.SHA }} # Unique tag for this build
+          release_name: Musicova for macOS version ${{ steps.commit_sha.outputs.SHA }} # Descriptive release name
+          body: |
+            Automated build of musicova.py executable for macOS from commit ${{ steps.commit_sha.outputs.SHA }}.
+            See changes in the Python folder.
+          draft: false
+          prerelease: false
+
+      - name: Upload macOS Executable to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          # PyInstaller on macOS often creates a .app bundle, but --onefile typically results in a single executable file
+          # inside the dist folder, or a .app bundle that contains the executable.
+          # For simplicity, we'll assume the main executable is directly in dist/ for --onefile.
+          # If it creates a .app bundle, the path might be ./Python/dist/musicova.app/Contents/MacOS/musicova
+          asset_path: ./Python/dist/musicova # No file extension for the main executable on macOS
+          asset_name: musicova-macos-${{ steps.commit_sha.outputs.SHA }} # Name of the file in the release
+          asset_content_type: application/octet-stream # Generic binary MIME type
