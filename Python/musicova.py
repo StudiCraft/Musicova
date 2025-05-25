@@ -79,7 +79,7 @@ class MusicovaApp(QMainWindow):
         layout.addWidget(title_label)
 
         subtitle_label = QLabel('The Open-Source music player')
-        subtitle_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 20px;') # Changed from 24px to 20px
+        subtitle_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 24px;')
         subtitle_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle_label)
 
@@ -168,7 +168,7 @@ class MusicovaApp(QMainWindow):
                         border-radius: 25px;
                         padding: 15px 30px;
                         font-family: 'DynaPuff', sans-serif;
-                        font-size: 20px; /* Changed from 18px to 20px */
+                        font-size: 18px; /* Close to 1.2rem */
                         font-weight: bold; /* Close to 600 */
                     }
                     QPushButton:hover {
@@ -203,7 +203,7 @@ class MusicovaApp(QMainWindow):
                         border-radius: 25px;
                         padding: 15px 30px;
                         font-family: 'DynaPuff', sans-serif;
-                        font-size: 20px; /* Changed from 18px to 20px */
+                        font-size: 18px;
                         font-weight: bold;
                     }
                     QPushButton:hover {
@@ -252,7 +252,7 @@ class PlayerWindow(QMainWindow):
         # Initialize grid layout attributes
         self.current_row = 0
         self.current_col = 0
-        self.max_columns = 2  # Changed from 1 to 2
+        self.max_columns = 1  # Number of cards per row
 
         # Create central widget and layout
         central_widget = QWidget()
@@ -275,7 +275,7 @@ class PlayerWindow(QMainWindow):
 
         # Add title label for the player window
         self.title_label = QLabel('Musicova Player')
-        self.title_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 72px; font-weight: bold;') # Changed from 100px to 72px
+        self.title_label.setStyleSheet('font-family: "DynaPuff", sans-serif; font-size: 100px; font-weight: bold;')
         self.title_label.setAlignment(Qt.AlignCenter)
 
         # Add import controls container (ComboBox for type, Import button)
@@ -599,7 +599,7 @@ class PlayerWindow(QMainWindow):
                     border-radius: 25px;
                     padding: 15px 30px;
                     font-family: 'DynaPuff', sans-serif;
-                    font-size: 16px; /* Changed from 18px to 16px */
+                    font-size: 18px;
                 }
                 QComboBox QAbstractItemView {
                     background-color: #2d2d2d;
@@ -688,7 +688,7 @@ class PlayerWindow(QMainWindow):
                     border-radius: 25px;
                     padding: 15px 30px;
                     font-family: "DynaPuff", sans-serif;
-                    font-size: 16px; /* Changed from 18px to 16px */
+                    font-size: 18px; /* Approx 1.2rem */
                     font-weight: 600;
                 }}
                 QComboBox QAbstractItemView {{ /* Style for the dropdown list itself */
@@ -717,7 +717,7 @@ class PlayerWindow(QMainWindow):
                     border-radius: 25px;
                     padding: 15px 30px;
                     font-family: "DynaPuff", sans-serif;
-                    font-size: 16px; /* Changed from 18px to 16px */
+                    font-size: 18px; /* Approx 1.2rem */
                     font-weight: 600;
                 }}
             """
@@ -757,7 +757,7 @@ class PlayerWindow(QMainWindow):
                     border-radius: 25px;
                     padding: 15px 30px;
                     font-family: 'DynaPuff', sans-serif;
-                    font-size: 16px; /* Changed from 18px to 16px */
+                    font-size: 18px;
                 }
                 QComboBox QAbstractItemView {
                     background-color: white;
@@ -831,7 +831,7 @@ class PlayerWindow(QMainWindow):
                     border-radius: 25px;
                     padding: 15px 30px;
                     font-family: "DynaPuff", sans-serif;
-                    font-size: 16px; /* Changed from 18px to 16px */
+                    font-size: 18px; /* Approx 1.2rem */
                     font-weight: 600;
                 }}
                 QComboBox QAbstractItemView {{ /* Style for the dropdown list itself */
@@ -860,7 +860,7 @@ class PlayerWindow(QMainWindow):
                     border-radius: 25px;
                     padding: 15px 30px;
                     font-family: "DynaPuff", sans-serif;
-                    font-size: 16px; /* Changed from 18px to 16px */
+                    font-size: 18px; /* Approx 1.2rem */
                     font-weight: 600;
                 }}
             """
@@ -1101,7 +1101,7 @@ class PlayerWindow(QMainWindow):
         #         self.play_track(self.playlist[0]) # Play first track if current not found
 
     # The duplicate go_back was removed by the tool, this is just a comment placeholder
-    # def go_back(self:
+    # def go_back(self):
     #     self.parent.show()
     #     self.close()
 
