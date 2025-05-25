@@ -15,13 +15,17 @@ jobs:
       contents: write # Required to create a GitHub Release (write permissions)
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }} # Output the upload URL for subsequent jobs
-      commit_sha: ${{ steps.commit_sha.outputs.SHA }} # Output the commit SHA for consistent naming
+      # The commit_sha and release_tag are now directly passed from the run context for clarity
+      # commit_sha: ${{ steps.commit_sha.outputs.SHA }} # No longer needed as an explicit output if using github.sha
       release_tag: ${{ steps.create_release.outputs.tag_name }} # Output the tag for asset naming
-
     steps:
-      - name: Get current commit SHA
-        id: commit_sha
-        run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Removed 'Get current commit SHA' step as github.sha is directly available.
+      # - name: Get current commit SHA
+      #   id: commit_sha
+      #   run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
@@ -29,17 +33,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
         with:
-          tag_name: musicova-build-${{ steps.commit_sha.outputs.SHA }} # Unique tag for this specific build
-          release_name: Musicova Multi-Platform Build ${{ steps.commit_sha.outputs.SHA }} # Descriptive release name
+          # FIX: Changed tag_name to a more reliable unique identifier that is always a valid Git tag format.
+          # We use github.run_id and github.run_attempt to ensure uniqueness for each workflow run.
+          # github.sha gives the full commit SHA, which is also unique for the release name/body.
+          tag_name: release-${{ github.run_id }}-${{ github.run_attempt }} # Unique and valid tag for this build
+          release_name: Musicova Multi-Platform Build ${{ github.sha }} # Descriptive release name including full SHA
           body: |
-            Automated multi-platform build of musicova.py executable from commit ${{ steps.commit_sha.outputs.SHA }}.
+            Automated multi-platform build of musicova.py executable from commit ${{ github.sha }}.
             This release includes builds for Windows, Linux, and macOS.
             ---
             **To run:**
             Download the appropriate executable for your operating system.
-            * For Windows: `musicova-windows-${{ steps.commit_sha.outputs.SHA }}.exe`
-            * For macOS: `musicova-macos-${{ steps.commit_sha.outputs.SHA }}`
-            * For Linux: `musicova-ubuntu-${{ steps.commit_sha.outputs.SHA }}`
+            * For Windows: `musicova-windows-${{ github.sha }}.exe`
+            * For macOS: `musicova-macos-${{ github.sha }}`
+            * For Linux: `musicova-ubuntu-${{ github.sha }}`
             ---
             See changes in the Python folder.
           draft: false # Set to true if you want to manually publish later
@@ -55,11 +62,9 @@ jobs:
         # Define the operating systems to build on.
         # Each OS in this list will run a separate instance of this job.
         os: [windows-latest, ubuntu-latest, macos-latest]
-
     runs-on: ${{ matrix.os }} # Run each build on its respective OS runner
     permissions:
       contents: write # Required to upload assets to the release
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,7 +84,7 @@ jobs:
           # your-library-name==1.0.0
           # another-library
           # Then, uncomment the following line:
-          pip install -r requirements.txt
+          # pip install -r requirements.txt
         working-directory: ./Python # Ensure pip install runs from the Python directory
 
       - name: Compile Python script to executable
@@ -88,6 +93,7 @@ jobs:
         # --windowed: Suppresses the console window (primarily for GUI apps on Windows/macOS).
         #             For Linux console apps, you might remove this or use --noconsole.
         #             If your app is GUI, --windowed is generally good.
+        # --add-data: Properly bundles the font file. Ensure 'fonts/DynaPuff-Regular.ttf' path is correct relative to musicova.py.
         working-directory: ./Python # PyInstaller will output build artifacts to ./Python/dist/
 
       - name: Upload Executable to Release
@@ -99,5 +105,5 @@ jobs:
           upload_url: ${{ needs.create-github-release.outputs.upload_url }}
           # Dynamically set asset_path and asset_name based on the current OS in the matrix
           asset_path: ./Python/dist/musicova${{ matrix.os == 'windows-latest' && '.exe' || '' }} # Adds .exe for Windows, no extension for others
-          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}-${{ needs.create-github-release.outputs.commit_sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}-${{ github.sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
           asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/vnd.microsoft.portable-executable' || 'application/octet-stream' }}
