@@ -1,32 +1,46 @@
+<!--
+  HTML/home.html
+  This is the main landing page for the Musicova web application.
+  It displays the application title, logo, and a button to access the music player.
+  It also includes a dark mode toggle.
+-->
 <!DOCTYPE html>
 <html lang="en">
+<!-- Header Section -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Musicova</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="shortcut icon" href="Musicova logo v2.png">
+    <!-- Google Fonts for DynaPuff -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
+    <!-- Embedded JavaScript for Dark Mode -->
     <script>
-        // Dark mode toggle functionality
+        // This script handles the dark mode toggle functionality.
+        // It checks localStorage for a saved preference and applies it on load.
+        // It also updates the toggle button icon and saves the preference when changed.
         document.addEventListener('DOMContentLoaded', function() {
-            // Check for saved dark mode preference
+            // Check for saved dark mode preference in localStorage
             if (localStorage.getItem('darkMode') === 'enabled') {
                 document.body.classList.add('dark-mode');
             }
             const darkModeToggle = document.getElementById('darkModeToggle');
             const toggleIcon = darkModeToggle.querySelector('.toggle-icon');
 
+            // Event listener for the dark mode toggle button
             darkModeToggle.addEventListener('click', () => {
-                document.body.classList.toggle('dark-mode');
+                document.body.classList.toggle('dark-mode'); // Toggle the .dark-mode class on the body
                 const isDarkMode = document.body.classList.contains('dark-mode');
+                // Save the current state to localStorage
                 localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+                // Update the toggle icon
                 toggleIcon.textContent = isDarkMode ? '☀️' : '🌙';
             });
 
-            // Set initial icon based on dark mode state
+            // Set initial icon based on the current dark mode state (e.g., if loaded from localStorage)
             if (document.body.classList.contains('dark-mode')) {
                 toggleIcon.textContent = '☀️';
             }
@@ -34,13 +48,16 @@
     </script>
 </head>
 <body>
+    <!-- Dark Mode Toggle Button -->
     <button id="darkModeToggle" class="dark-mode-toggle">
         <span class="toggle-icon">🌙</span>
     </button>
+    <!-- Main Content/Title Section -->
     <div class="musicova-title">
         <img src="Musicova logo v2.png" alt="Musicova logo" height="auto">
     <h1>Musicova</h1>
     <h2>The Open-Source music player</h2>
+    <!-- Navigation Button to Player Page -->
     <button onclick="window.location.href='player.html'">Access</button>
 </div>
 </body>
