@@ -1,0 +1,35 @@
+name: Deploy Website to Web-Version
+
+on:
+  push:
+    branches:
+      - main # Trigger this workflow when new commits are pushed to the 'main' branch
+    paths:
+      - 'HTML/**' # Only run if changes are within the 'website_source' folder
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required by peaceiris/actions-gh-pages to work correctly
+
+      # If your site needs a build step (e.g., Jekyll, Hugo, React build)
+      # - name: Build site (example for a static site generator)
+      #   run: |
+      #     npm install # if it's a JS project
+      #     npm run build # or whatever build command you have
+      #   working-directory: ./website_source # If your build command needs to run from the site directory
+
+      - name: Deploy to Web-Version branch
+        uses: peaceiris/actions-gh-pages@v3 # Use v3 or v4 if available
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./HTML # <--- IMPORTANT: This is the folder in your main branch
+          publish_branch: Web-Version # <--- The target branch for GitHub Pages
+          force_orphan: true # This will delete everything in Web-Version and replace it with content from publish_dir
+          # If you want to keep the .git history on the Web-Version branch and just push new changes
+          # remove force_orphan: true and use `cname: 'your-custom-domain.com'` if applicable.
+          # or `commit_message: "Deploy from main [skip ci]"` to avoid infinite loops if 'main' also triggers this branch.
