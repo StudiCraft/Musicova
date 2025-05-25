@@ -1,30 +1,47 @@
+<!--
+  HTML/player.html
+  This is the player page for the Musicova web application.
+  It allows users to import music, view their playlist as cards, and control playback.
+  It also includes a dark mode toggle and a button to return to the home page.
+  Audio cards are dynamically inserted into the body by script.js.
+-->
 <!DOCTYPE html>
 <html lang="en">
+    <!-- Header Section -->
     <head>
-        <title>Musicova - PLayer</title>
-        <link rel="stylesheet" href="styles.css">
-        <script src="script.js"></script>
+        <title>Musicova - Player</title>
+        <link rel="stylesheet" href="styles.css"> <!-- External stylesheet -->
+        <script src="script.js" defer></script> <!-- External JavaScript for player functionality, deferred to load after HTML parsing -->
+        <!-- Google Fonts for DynaPuff -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
+        <!-- Embedded JavaScript for Dark Mode -->
         <script>
-        // Dark mode toggle functionality
+        // This script handles the dark mode toggle functionality.
+        // It checks localStorage for a saved preference and applies it on load.
+        // It also updates the toggle button icon and saves the preference when changed.
+        // Note: This is a duplicate of the script in home.html. For larger applications,
+        // this could be moved to a shared JavaScript file.
         document.addEventListener('DOMContentLoaded', function() {
-            // Check for saved dark mode preference
+            // Check for saved dark mode preference in localStorage
             if (localStorage.getItem('darkMode') === 'enabled') {
                 document.body.classList.add('dark-mode');
             }
             const darkModeToggle = document.getElementById('darkModeToggle');
             const toggleIcon = darkModeToggle.querySelector('.toggle-icon');
 
+            // Event listener for the dark mode toggle button
             darkModeToggle.addEventListener('click', () => {
-                document.body.classList.toggle('dark-mode');
+                document.body.classList.toggle('dark-mode'); // Toggle the .dark-mode class on the body
                 const isDarkMode = document.body.classList.contains('dark-mode');
+                // Save the current state to localStorage
                 localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+                // Update the toggle icon
                 toggleIcon.textContent = isDarkMode ? '☀️' : '🌙';
             });
 
-            // Set initial icon based on dark mode state
+            // Set initial icon based on the current dark mode state (e.g., if loaded from localStorage)
             if (document.body.classList.contains('dark-mode')) {
                 toggleIcon.textContent = '☀️';
             }
@@ -32,12 +49,16 @@
     </script>
 </head>
     <body>
+        <!-- Dark Mode Toggle Button -->
         <button id="darkModeToggle" class="dark-mode-toggle">
             <span class="toggle-icon">🌙</span>
         </button>
+        <!-- Back Button to Home Page -->
         <button onclick="window.location.href='home.html'" class="back-button">Back to Home</button>
+        <!-- Player Title Section -->
         <div class="musicova-player-title">
             <h1>Musicova Player</h1>
+            <!-- Import Controls Section -->
             <div class="select-container">
                 <select class="file-select">
                     <option value="" disabled selected>Select import type</option>
@@ -47,5 +68,7 @@
                 <button class="import-button">Import</button>
             </div>
         </div>
+        <!-- Area where audio cards will be dynamically inserted by script.js -->
+        <!-- Player cards will be appended to the body or a specific container by script.js -->
     </body>
 </html>

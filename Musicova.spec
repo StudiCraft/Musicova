@@ -1,3 +1,6 @@
+# This is a PyInstaller spec file. It is used by PyInstaller to package the
+# Musicova Python application (musicova.py) into a standalone executable,
+# bundling necessary assets like the logo.
 # -*- mode: python ; coding: utf-8 -*-
 
 
