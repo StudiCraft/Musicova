@@ -1,0 +1,103 @@
+name: Build Python Executable and Create Multi-Platform Release
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+    paths:
+      - 'Python/**' # Only trigger if changes are made within the Python folder
+
+jobs:
+  # Job 1: Create the GitHub Release (runs only once)
+  create-github-release:
+    runs-on: ubuntu-latest # This job can run on any OS, as it only creates the release
+    permissions:
+      contents: write # Required to create a GitHub Release (write permissions)
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }} # Output the upload URL for subsequent jobs
+      commit_sha: ${{ steps.commit_sha.outputs.SHA }} # Output the commit SHA for consistent naming
+      release_tag: ${{ steps.create_release.outputs.tag_name }} # Output the tag for asset naming
+
+    steps:
+      - name: Get current commit SHA
+        id: commit_sha
+        run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
+        with:
+          tag_name: musicova-build-${{ steps.commit_sha.outputs.SHA }} # Unique tag for this specific build
+          release_name: Musicova Multi-Platform Build ${{ steps.commit_sha.outputs.SHA }} # Descriptive release name
+          body: |
+            Automated multi-platform build of musicova.py executable from commit ${{ steps.commit_sha.outputs.SHA }}.
+            This release includes builds for Windows, Linux, and macOS.
+            ---
+            **To run:**
+            Download the appropriate executable for your operating system.
+            * For Windows: `musicova-windows-${{ steps.commit_sha.outputs.SHA }}.exe`
+            * For macOS: `musicova-macos-${{ steps.commit_sha.outputs.SHA }}`
+            * For Linux: `musicova-ubuntu-${{ steps.commit_sha.outputs.SHA }}`
+            ---
+            See changes in the Python folder.
+          draft: false # Set to true if you want to manually publish later
+          prerelease: false # Set to true for pre-release builds
+
+  # Job 2: Build and upload executables for each OS (runs in parallel)
+  build-and-upload:
+    # This job depends on the 'create-github-release' job completing successfully.
+    # The 'needs' keyword also makes the outputs of 'create-github-release' available.
+    needs: create-github-release
+    strategy:
+      matrix:
+        # Define the operating systems to build on.
+        # Each OS in this list will run a separate instance of this job.
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }} # Run each build on its respective OS runner
+    permissions:
+      contents: write # Required to upload assets to the release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use the latest stable Python 3 version available on the runner
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          # --- IMPORTANT ---
+          # If your Python script (musicova.py) uses any other third-party libraries,
+          # create a 'requirements.txt' file in your 'Python/' directory like this:
+          # your-library-name==1.0.0
+          # another-library
+          # Then, uncomment the following line:
+          pip install -r requirements.txt
+        working-directory: ./Python # Ensure pip install runs from the Python directory
+
+      - name: Compile Python script to executable
+        run: pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
+        # --onefile: Creates a single executable file.
+        # --windowed: Suppresses the console window (primarily for GUI apps on Windows/macOS).
+        #             For Linux console apps, you might remove this or use --noconsole.
+        #             If your app is GUI, --windowed is generally good.
+        working-directory: ./Python # PyInstaller will output build artifacts to ./Python/dist/
+
+      - name: Upload Executable to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
+        with:
+          # Get the upload URL from the 'create-github-release' job's output
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          # Dynamically set asset_path and asset_name based on the current OS in the matrix
+          asset_path: ./Python/dist/musicova${{ matrix.os == 'windows-latest' && '.exe' || '' }} # Adds .exe for Windows, no extension for others
+          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}-${{ needs.create-github-release.outputs.commit_sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/vnd.microsoft.portable-executable' || 'application/octet-stream' }}
