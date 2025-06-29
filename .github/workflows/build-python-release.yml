@@ -24,7 +24,9 @@ jobs:
       - name: Generate Release Tag and Name
         id: generate_tag_name
         run: |
-          RELEASE_TAG="build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          RELEASE_DATE=$(date +'%Y%m%d')
+          RELEASE_TAG="release-${RELEASE_DATE}-${SHORT_SHA}"
           RELEASE_NAME="Musicova Multi-Platform Build ${{ github.sha }}"
           RELEASE_BODY=$(cat <<EOF
             Automated multi-platform build of Musicova (PyQt5 version) executable from commit `${{ github.sha }}`.
