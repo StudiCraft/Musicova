@@ -1,0 +1,54 @@
+<!--
+  HTML/player.html
+  This is the player page for the Musicova web application.
+  It allows users to import music, view their playlist as cards, and control playback.
+  It also includes a dark mode toggle and a button to return to the home page.
+  Audio cards are dynamically inserted into the body by script.js.
+-->
+<!DOCTYPE html>
+<html lang="en">
+    <!-- Header Section -->
+    <head>
+        <title>Musicova - Player</title>
+        <link rel="stylesheet" href="styles.css"> <!-- External stylesheet -->
+        <!-- Link to new JS files -->
+        <script src="utils.js" defer></script>
+        <script src="ui.js" defer></script>
+        <script src="player.js" defer></script>
+        <!-- Google Fonts for DynaPuff -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
+        <script>
+            // Initialize functionalities from the new JS files
+            document.addEventListener('DOMContentLoaded', function() {
+                initDarkMode('darkModeToggle'); // From ui.js
+                initPlayerPage(); // From player.js, to set up import buttons etc.
+            });
+        </script>
+</head>
+    <body>
+        <!-- Dark Mode Toggle Button -->
+        <button id="darkModeToggle" class="dark-mode-toggle">
+            <span class="toggle-icon">🌙</span>
+        </button>
+        <!-- Back Button to Home Page -->
+        <button onclick="window.location.href='home.html'" class="back-button">Back to Home</button>
+        <!-- Player Title Section -->
+        <div class="musicova-player-title">
+            <h1>Musicova Player</h1>
+            <!-- Import Controls Section -->
+            <div class="select-container">
+                <select class="file-select">
+                    <option value="" disabled selected>Select import type</option>
+                    <option value="folder">Choose Folder</option>
+                    <option value="file">Choose File</option>
+                </select>
+                <button class="import-button">Import</button>
+                <button class="clear-playlist-button">Clear Playlist</button> <!-- Added Clear Playlist Button -->
+            </div>
+        </div>
+        <!-- Area where audio cards will be dynamically inserted by player.js -->
+        <!-- Player cards will be appended to the .audio-cards-container by player.js -->
+    </body>
+</html>

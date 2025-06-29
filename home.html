@@ -1,0 +1,42 @@
+<!--
+  HTML/home.html
+  This is the main landing page for the Musicova web application.
+  It displays the application title, logo, and a button to access the music player.
+  It also includes a dark mode toggle.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<!-- Header Section -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Musicova</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="shortcut icon" href="Musicova logo v2.png">
+    <!-- Google Fonts for DynaPuff -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DynaPuff:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
+    <!-- Link to the new ui.js file -->
+    <script src="ui.js" defer></script>
+    <script>
+        // Initialize dark mode using the function from ui.js
+        document.addEventListener('DOMContentLoaded', function() {
+            initDarkMode('darkModeToggle'); // 'darkModeToggle' is the ID of your button
+        });
+    </script>
+</head>
+<body>
+    <!-- Dark Mode Toggle Button -->
+    <button id="darkModeToggle" class="dark-mode-toggle">
+        <span class="toggle-icon">🌙</span>
+    </button>
+    <!-- Main Content/Title Section -->
+    <div class="musicova-title">
+        <img src="Musicova logo v2.png" alt="Musicova logo" height="auto">
+    <h1>Musicova</h1>
+    <h2>The Open-Source Offline Music Player</h2>
+    <!-- Navigation Button to Player Page -->
+    <button onclick="window.location.href='player.html'">Access</button>
+</div>
+</body>
