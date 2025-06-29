@@ -1,77 +1,102 @@
-import tkinter as tk
-from tkinter import ttk, font, filedialog
-from PIL import Image, ImageTk
-import pygame
-import tkfontawesome as fa
+import sys
 import os
-import time # Added for progress tracking
-from mutagen.mp3 import MP3
-from mutagen.wave import WAVE
-from mutagen.oggvorbis import OggVorbis
-from mutagen.flac import FLAC
-from mutagen.easyid3 import EasyID3
-from mutagen import File as MutagenFile
+import pygame # Keep pygame for audio playback
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QPushButton, QLabel, QSlider, QComboBox, QFileDialog,
+                             QScrollArea, QStackedWidget, QFrame, QSpacerItem, QSizePolicy)
+from PyQt5.QtGui import QFont, QPixmap, QImage, QIcon, QPalette, QColor, QPainter, QBrush
+from PyQt5.QtCore import Qt, QSize, QTimer, QUrl, QRect
+from PIL import Image # Keep PIL for image manipulation if needed before converting to QPixmap
+from mutagen import File as MutagenFile # Keep mutagen for metadata
 
-# --- THEME_COLORS Definition (unchanged) ---
+# FontAwesome Unicode characters (replace tkfontawesome)
+FA_ICONS = {
+    "play": "\uf04b",
+    "pause": "\uf04c",
+    "stop": "\uf04d", # Example, not used yet
+    "backward-step": "\uf048", # Example
+    "forward-step": "\uf051", # Example
+    "trash-can": "\uf2ed",
+    "moon": "\uf186",
+    "sun": "\uf185",
+    "arrow-left": "\uf060",
+    "folder-open": "\uf07c", # Example for import
+    "file-audio": "\uf1c7", # Example for import
+}
+
+# --- THEME_COLORS Definition (remains, will be used to generate QSS) ---
 THEME_COLORS = {
     "light": {
         "bg": "blueviolet", "text": "black", "button_bg": "white", "button_text": "blueviolet",
-        "title_text": "black", "card_bg": "white", "hover_bg": "#f0f0f0",
-        "progress_bg": "#e0e0e0", "progress_fill": "blueviolet", "font_family": "DynaPuff",
+        "title_text": "black", "card_bg": "white", "hover_bg": "#f0f0f0", "disabled_bg": "#cccccc",
+        "progress_bg": "#e0e0e0", "progress_fill": "blueviolet", "font_family": "DynaPuff", # Ensure this font is available or use a common one
         "font_size_title": 48, "font_size_subtitle": 24, "font_size_button": 14,
         "font_size_player_title": 36, "font_size_track_name": 16, "font_size_time": 11,
-        "font_size_icon_button": 10,
+        "font_size_icon_button": 14, # Adjusted for direct text rendering
     },
     "dark": {
         "bg": "#1a1a1a", "text": "white", "button_bg": "#3d3d3d", "button_text": "white",
-        "title_text": "white", "card_bg": "#2d2d2d", "hover_bg": "#3d3d3d",
-        "progress_bg": "#404040", "progress_fill": "#8a2be2", "font_family": "DynaPuff",
+        "title_text": "white", "card_bg": "#2d2d2d", "hover_bg": "#555555", "disabled_bg": "#454545",
+        "progress_bg": "#404040", "progress_fill": "#8a2be2", "font_family": "DynaPuff", # Ensure this font is available
         "font_size_title": 48, "font_size_subtitle": 24, "font_size_button": 14,
         "font_size_player_title": 36, "font_size_track_name": 16, "font_size_time": 11,
-        "font_size_icon_button": 10,
+        "font_size_icon_button": 14, # Adjusted
     }
 }
 
-# --- AudioTrackWidget Class ---
-class AudioTrackWidget(ttk.Frame):
-    def __init__(self, parent, app_instance, file_path, track_index, on_play_callback, on_remove_callback):
-        super().__init__(parent, style="Card.TFrame")
-        self.parent_app = app_instance # Reference to the main MusicovaApp instance
+# Placeholder for where the logo is expected
+LOGO_PATH = "Python/Musicova logo v2.png"
+FONT_PATH = "Python/fonts/DynaPuff-Regular.ttf" # Assuming this is the path
+
+# --- AudioTrackWidget Class (QWidget) ---
+class AudioTrackWidget(QWidget):
+    def __init__(self, app_instance, file_path, track_index, on_play_callback, on_remove_callback, parent=None):
+        super().__init__(parent)
+        self.parent_app = app_instance
         self.file_path = file_path
-        self.track_index = track_index # Index in the playlist
+        self.track_index = track_index
         self.on_play_callback = on_play_callback
         self.on_remove_callback = on_remove_callback
 
         self.sound = None
         self.duration_sec = 0
         self.is_playing = False
-        self.is_paused = False # Explicit pause state
+        self.is_paused = False
+        self.display_name = os.path.basename(self.file_path) # Default
 
         self._load_audio_meta()
-        self._create_widgets()
-        self.update_theme() # Apply initial theme
+        self._init_ui()
+        self.update_theme() # Apply initial theme via QSS or direct styling
 
         try:
             self.sound = pygame.mixer.Sound(file_path)
             self.duration_sec = self.sound.get_length()
-            self.total_time_label.config(text=self._format_time(self.duration_sec))
+            self.total_time_label.setText(self._format_time(self.duration_sec))
         except pygame.error as e:
             print(f"Error loading sound {file_path}: {e}")
-            self.track_name_label.config(text=f"{self.track_name_label.cget('text')} (Error)")
-            # Disable playback controls if sound fails to load
-            self.play_pause_button.config(state=tk.DISABLED)
+            self.track_name_label.setText(f"{self.display_name} (Error)")
+            self.play_pause_button.setEnabled(False)
+        except Exception as e: # Catch other potential errors during init
+            print(f"General error initializing track {file_path}: {e}")
+            if hasattr(self, 'track_name_label'):
+                self.track_name_label.setText(f"{self.display_name} (Load Error)")
+            if hasattr(self, 'play_pause_button'):
+                self.play_pause_button.setEnabled(False)
 
 
     def _load_audio_meta(self):
-        self.display_name = os.path.basename(self.file_path)
         try:
             audio_file = MutagenFile(self.file_path, easy=True)
             if audio_file:
-                if 'title' in audio_file and audio_file['title']:
-                    self.display_name = audio_file['title'][0]
-                if 'artist' in audio_file and audio_file['artist']:
-                    self.display_name = f"{audio_file['artist'][0]} - {self.display_name}"
-            # Album art extraction is more complex and platform-dependent, skipping for now
+                title = audio_file.get('title', [None])[0]
+                artist = audio_file.get('artist', [None])[0]
+                if title and artist:
+                    self.display_name = f"{artist} - {title}"
+                elif title:
+                    self.display_name = title
+                elif artist: # Less common to have artist but not title, but possible
+                    self.display_name = f"{artist} - {os.path.splitext(os.path.basename(self.file_path))[0]}"
+            # Album art extraction would go here if implemented
         except Exception as e:
             print(f"Error reading metadata for {self.file_path}: {e}")
 
@@ -80,595 +105,653 @@ class AudioTrackWidget(ttk.Frame):
             self.display_name = os.path.splitext(os.path.basename(self.file_path))[0]
 
 
-    def _create_widgets(self):
-        self.configure(padding=(10,10))
-        # Album Art Placeholder
-        self.album_art_placeholder = tk.Canvas(self, width=60, height=60, bd=0, highlightthickness=0)
-        self.album_art_placeholder.grid(row=0, column=0, rowspan=3, padx=(0, 10), pady=5, sticky="ns")
+    def _init_ui(self):
+        self.setObjectName("AudioTrackWidgetCard") # For QSS styling
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(5)
 
-        # Track Name
-        self.track_name_label = ttk.Label(self, text=self.display_name, style="TrackName.TLabel", anchor="w", wraplength=280)
-        self.track_name_label.grid(row=0, column=1, columnspan=3, sticky="ew", pady=(5,0))
+        # Top part: Album art, Track name, Time
+        top_layout = QHBoxLayout()
 
-        # Time Display (Current / Total)
-        time_frame = ttk.Frame(self, style="CardInner.TFrame")
-        time_frame.grid(row=1, column=1, columnspan=3, sticky="ew", pady=2)
-        self.current_time_label = ttk.Label(time_frame, text="0:00", style="Time.TLabel")
-        self.current_time_label.pack(side="left", padx=(0,5))
-        separator_label = ttk.Label(time_frame, text="/", style="Time.TLabel")
-        separator_label.pack(side="left")
-        self.total_time_label = ttk.Label(time_frame, text=self._format_time(self.duration_sec), style="Time.TLabel")
-        self.total_time_label.pack(side="left", padx=(5,0))
+        self.album_art_label = QLabel("Art") # Placeholder
+        self.album_art_label.setFixedSize(60, 60)
+        self.album_art_label.setStyleSheet("background-color: grey; border: 1px solid black;") # Basic placeholder
+        self.album_art_label.setAlignment(Qt.AlignCenter)
+        top_layout.addWidget(self.album_art_label)
 
-        # Progress Bar (Using ttk.Scale for now, could be custom)
-        self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Scale(self, from_=0, to=100, orient="horizontal", variable=self.progress_var, command=self.seek_audio, style="Player.Horizontal.TScale")
-        self.progress_bar.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(0,5))
+        info_layout = QVBoxLayout()
+        self.track_name_label = QLabel(self.display_name)
+        self.track_name_label.setObjectName("TrackNameLabel")
+        self.track_name_label.setWordWrap(True)
+        info_layout.addWidget(self.track_name_label)
+
+        time_layout = QHBoxLayout()
+        self.current_time_label = QLabel("0:00")
+        self.current_time_label.setObjectName("TimeLabel")
+        separator_label = QLabel("/")
+        separator_label.setObjectName("TimeLabel")
+        self.total_time_label = QLabel(self._format_time(self.duration_sec))
+        self.total_time_label.setObjectName("TimeLabel")
+        time_layout.addWidget(self.current_time_label)
+        time_layout.addWidget(separator_label)
+        time_layout.addWidget(self.total_time_label)
+        time_layout.addStretch()
+        info_layout.addLayout(time_layout)
+
+        top_layout.addLayout(info_layout)
+        main_layout.addLayout(top_layout)
+
+        # Progress Bar
+        self.progress_slider = QSlider(Qt.Horizontal)
+        self.progress_slider.setObjectName("ProgressSlider")
+        self.progress_slider.setRange(0, 1000) # Represents permillage for smoother seeking
+        self.progress_slider.setValue(0)
+        self.progress_slider.sliderMoved.connect(self.seek_audio_from_slider) # User drag
+        self.progress_slider.valueChanged.connect(self.seek_audio_from_slider_click) # Click on bar
+        main_layout.addWidget(self.progress_slider)
 
         # Controls Frame
-        controls_frame = ttk.Frame(self, style="CardInner.TFrame")
-        controls_frame.grid(row=3, column=0, columnspan=4, sticky="ew", pady=5)
-        controls_frame.columnconfigure([0,1,2,3,4], weight=1) # Distribute space
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(5)
 
-        # Control Buttons
-        self.play_pause_button = ttk.Button(controls_frame, text=fa.icons['play'], command=self.toggle_play_pause, style="Icon.TButton")
-        self.play_pause_button.grid(row=0, column=1, padx=2)
+        self.play_pause_button = QPushButton(FA_ICONS["play"])
+        self.play_pause_button.setObjectName("IconPlainButton")
+        self.play_pause_button.clicked.connect(self.toggle_play_pause)
 
-        # Placeholder for Prev/Next - these are playlist level, not track level usually
-        # prev_button = ttk.Button(controls_frame, text=fa.icons['backward-step'], style="Icon.TButton") # command=self.prev_track
-        # prev_button.grid(row=0, column=0, padx=2)
-        # next_button = ttk.Button(controls_frame, text=fa.icons['forward-step'], style="Icon.TButton") # command=self.next_track
-        # next_button.grid(row=0, column=2, padx=2)
+        # Volume slider (simplified for now)
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setObjectName("VolumeSlider")
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(100) # Default 100%
+        self.volume_slider.valueChanged.connect(self.set_volume_from_slider)
+        self.volume_slider.setFixedWidth(80)
 
-        self.volume_var = tk.DoubleVar(value=1.0) # Default 100% volume
-        self.volume_slider = ttk.Scale(controls_frame, from_=0, to=1, orient="horizontal", variable=self.volume_var, command=self.set_volume, style="Player.Horizontal.TScale", length=80)
-        self.volume_slider.grid(row=0, column=3, padx=5, sticky="e")
+        remove_button = QPushButton(FA_ICONS["trash-can"])
+        remove_button.setObjectName("IconPlainButton")
+        remove_button.clicked.connect(self._remove_self)
 
-        remove_button = ttk.Button(controls_frame, text=fa.icons['trash-can'], command=self._remove_self, style="Icon.TButton")
-        remove_button.grid(row=0, column=4, padx=2, sticky="e")
+        controls_layout.addStretch()
+        controls_layout.addWidget(self.play_pause_button)
+        controls_layout.addStretch()
+        controls_layout.addWidget(QLabel("Vol:")) # Simple label
+        controls_layout.addWidget(self.volume_slider)
+        controls_layout.addStretch()
+        controls_layout.addWidget(remove_button)
+        controls_layout.addStretch()
+        main_layout.addLayout(controls_layout)
 
-        # Make the frame itself expand
-        self.columnconfigure(1, weight=1) # Allow track name and progress bar to expand
+        self.setFixedHeight(self.sizeHint().height()) # Try to keep card height consistent
 
     def _format_time(self, seconds):
-        if seconds is None: return "0:00"
+        if seconds is None or seconds < 0: return "0:00" # Handle potential negative from get_pos
         minutes = int(seconds // 60)
         seconds = int(seconds % 60)
         return f"{minutes}:{seconds:02d}"
 
-    def update_progress(self):
-        if self.is_playing and self.sound and pygame.mixer.get_busy(): # Check if the channel is busy
-            current_pos_sec = pygame.mixer.music.get_pos() / 1000.0 if self.parent_app.currently_playing_widget == self else 0
-            # ^ This needs to be specific to the Sound object, not pygame.mixer.music if using Sound objects
-            # For Sound objects, there's no direct get_pos(). We need to track start time or use a channel.
-            # This part will be tricky with individual Sound objects if not using channels.
-            # Let's assume for now that the playlist manager handles this.
-            # For simplicity in widget, let's assume the parent app updates this.
-            # self.progress_var.set((current_pos_sec / self.duration_sec) * 100 if self.duration_sec > 0 else 0)
-            # self.current_time_label.config(text=self._format_time(current_pos_sec))
-
-        # If using Sound objects, the main app will need to poll and update this widget
-        # Or, this widget needs its own timer to estimate progress.
-
-    def set_progress_display(self, current_time_sec, percentage):
-        self.current_time_label.config(text=self._format_time(current_time_sec))
-        if not self.progress_bar.winfo_ismapped(): # Avoid error if widget is being destroyed
-            return
-        try: # Avoid error if widget is being destroyed during update
-            current_slider_val = self.progress_var.get()
-            # Only set if significantly different to avoid slider jitter or if user is not dragging
-            # This simple check might not be enough for smooth user dragging override
-            if abs(current_slider_val - percentage) > 0.5: # Threshold to prevent fighting with user drag
-                 self.progress_var.set(percentage)
-        except tk.TclError:
-            pass # Widget might be gone
-
+    def set_progress_display(self, current_time_sec, percentage_permille): # percentage is 0-1000
+        self.current_time_label.setText(self._format_time(current_time_sec))
+        if not self.progress_slider.isSliderDown(): # Don't update if user is dragging
+            self.progress_slider.setValue(int(percentage_permille))
 
     def toggle_play_pause(self):
-        self.on_play_callback(self) # Notify parent app
+        self.on_play_callback(self)
 
-    def play(self):
+    def play(self, channel): # Expects a pygame channel
         if self.sound:
-            self.sound.play()
+            channel.play(self.sound)
             self.is_playing = True
             self.is_paused = False
-            self.play_pause_button.config(text=fa.icons['pause'])
+            self.play_pause_button.setText(FA_ICONS["pause"])
             self.parent_app.set_active_card_style(self, True)
 
-    def pause(self):
+    def pause(self, channel):
         if self.sound and self.is_playing:
-            self.sound.pause() # For Sound objects, use pause()
-            self.is_playing = False # Keep playing state true, but add paused state
-            self.is_paused = True
-            self.play_pause_button.config(text=fa.icons['play'])
-            self.parent_app.set_active_card_style(self, False)
+            channel.pause()
+            self.is_paused = True # is_playing remains true, but it's paused
+            self.play_pause_button.setText(FA_ICONS["play"])
+            # Active style might remain or change based on preference
+            # self.parent_app.set_active_card_style(self, False) # Optional: remove active style on pause
 
-    def resume(self):
+    def resume(self, channel):
         if self.sound and self.is_paused:
-            self.sound.unpause()
-            self.is_playing = True
+            channel.unpause()
             self.is_paused = False
-            self.play_pause_button.config(text=fa.icons['pause'])
+            self.play_pause_button.setText(FA_ICONS["pause"])
             self.parent_app.set_active_card_style(self, True)
 
-    def stop(self):
+    def stop(self, channel):
         if self.sound:
-            self.sound.stop()
+            channel.stop()
             self.is_playing = False
             self.is_paused = False
-            self.play_pause_button.config(text=fa.icons['play'])
-            self.progress_var.set(0)
-            self.current_time_label.config(text="0:00")
+            self.play_pause_button.setText(FA_ICONS["play"])
+            self.progress_slider.setValue(0)
+            self.current_time_label.setText("0:00")
             self.parent_app.set_active_card_style(self, False)
 
-    def set_volume(self, val):
+    def set_volume_from_slider(self, value):
         if self.sound:
-            self.sound.set_volume(float(val))
+            self.sound.set_volume(float(value) / 100.0)
 
-    def seek_audio(self, value): # Called by progress bar Scale
+    def set_volume_direct(self, volume_float): # 0.0 to 1.0
+        if self.sound:
+            self.sound.set_volume(volume_float)
+            self.volume_slider.setValue(int(volume_float * 100))
+
+    def seek_audio_from_slider(self, value_permille): # value is 0-1000
         if self.sound and self.duration_sec > 0:
-            seek_time_sec = (float(value) / 100.0) * self.duration_sec
+            seek_time_sec = (float(value_permille) / 1000.0) * self.duration_sec
+            self.current_time_label.setText(self._format_time(seek_time_sec)) # Update display immediately
+            # Actual seeking is handled by parent app on slider release or value changed if not dragging
+            if self.parent_app.currently_playing_widget == self and not self.progress_slider.isSliderDown():
+                 self.parent_app.seek_playback(seek_time_sec)
 
-            # Update internal time tracking to reflect the seek
-            # This makes the progress bar visually jump to the seeked position.
-            self.parent_app.update_playback_time_for_seek(self, seek_time_sec)
-            self.current_time_label.config(text=self._format_time(seek_time_sec)) # Update display immediately
 
-            if self.parent_app.currently_playing_widget == self and self.parent_app.active_channel:
-                # Stop current playback on the channel
-                self.parent_app.active_channel.stop()
+    def seek_audio_from_slider_click(self, value_permille):
+        if not self.progress_slider.isSliderDown(): # only if not dragging (i.e. click)
+            self.seek_audio_from_slider(value_permille)
 
-                # Pygame Sound objects cannot be started from an offset when played on a channel directly.
-                # The sound will restart from the beginning when played on the channel.
-                # However, we can play the Sound object itself with a start time,
-                # and if it's on the active_channel, it will take over.
-
-                # Play the sound object (which supports `start` in seconds)
-                # Pygame will pick a channel; if our active_channel was free, it might pick that one.
-                # Or, we can try to ensure it plays on our active_channel if that's desired,
-                # but direct control is tricky.
-                # For simplicity, let pygame handle channel for this play, then re-assign active_channel if needed.
-
-                # The most reliable way is to play the sound and then check the channel.
-                # However, to maintain the idea of an "active_channel" for volume etc.,
-                # we'll play it on the designated active_channel, accepting it restarts from 0.
-                # The visual progress is already updated.
-
-                self.parent_app.active_channel.play(self.sound) # This will play from the beginning of the sound.
-
-                if self.is_paused:
-                    # If it was paused, it should remain paused (audio is at start, but visually at seeked pos)
-                    self.parent_app.active_channel.pause()
-                elif self.is_playing:
-                    # If it was playing, it should continue playing
-                    # (audio from start, visually from seeked pos, progress updater handles visual sync)
-                    self.is_playing = True
-                    self.is_paused = False
-                    self.play_pause_button.config(text=fa.icons['pause'])
-                    # The progress updater will now calculate progress from the new 'playback_start_time'
-                    self.parent_app.start_progress_updater()
-                # else: was stopped, seeking a stopped track. It's now loaded on channel, but not playing.
 
     def _remove_self(self):
-        self.stop()
+        # Stop playback if this track is playing (parent app will handle channel)
+        if self.parent_app.currently_playing_widget == self:
+            self.parent_app.stop_current_playback() # Ask parent to stop it properly
         self.on_remove_callback(self)
-        self.destroy()
+        self.deleteLater() # Safe way to delete QWidget
 
-    def update_theme(self):
-        theme = THEME_COLORS[self.parent_app.current_theme]
-        s = ttk.Style()
-        s.configure("Card.TFrame", background=theme["card_bg"], relief=tk.SOLID, borderwidth=1, bordercolor=theme.get("progress_fill", "grey"))
-        s.configure("CardInner.TFrame", background=theme["card_bg"])
-        s.configure("TrackName.TLabel", background=theme["card_bg"], foreground=theme["text"], font=self.parent_app.font_track_name)
-        s.configure("Time.TLabel", background=theme["card_bg"], foreground=theme["text"], font=self.parent_app.font_time)
-        s.configure("Icon.TButton", background=theme["card_bg"], foreground=theme["progress_fill"], font=self.parent_app.font_icon, padding=2) # Smaller padding
-        s.map("Icon.TButton", background=[('active', theme["hover_bg"])])
+    def update_theme(self): # Called by parent app when theme changes
+        # This will be handled by parent app's QSS update primarily
+        # Specific font sizes might need to be reapplied here if not covered by general QSS
+        theme_settings = THEME_COLORS[self.parent_app.current_theme]
+        font_family = self.parent_app.font_families["default"]
 
-        # Progress bar and Volume slider specific theming
-        s.configure("Player.Horizontal.TScale", background=theme["card_bg"], troughcolor=theme["progress_bg"])
-        # For TScale, thumb color often needs more direct manipulation or custom elements not easily done with ttk styles alone.
-        # We can try to set the general background, but the thumb itself might retain system/theme appearance.
-        self.progress_bar.configure(style="Player.Horizontal.TScale")
-        self.volume_slider.configure(style="Player.Horizontal.TScale")
+        track_font = QFont(font_family, theme_settings["font_size_track_name"])
+        self.track_name_label.setFont(track_font)
+
+        time_font = QFont(font_family, theme_settings["font_size_time"])
+        self.current_time_label.setFont(time_font)
+        self.total_time_label.setFont(time_font)
+        # Find the separator label and set its font too.
+        # This requires separator_label to be an instance variable or iterated through layout.
+        # For now, assuming parent QSS handles its color.
+
+        icon_font = self.parent_app.font_families["icon"]
+        button_font = QFont(icon_font, theme_settings["font_size_icon_button"])
+        self.play_pause_button.setFont(button_font)
+        # self.remove_button.setFont(button_font) # remove_button is local, find it or make it instance var
+
+        # Find remove_button in layout to set font (example, better to make it self.remove_button)
+        for i in range(self.layout().itemAt(2).layout().count()): # Assuming it's in the 3rd layout (controls_layout)
+            widget = self.layout().itemAt(2).layout().itemAt(i).widget()
+            if isinstance(widget, QPushButton) and widget.text() == FA_ICONS["trash-can"]:
+                widget.setFont(button_font)
+                break
+        self.parent_app.apply_stylesheet() # Trigger global stylesheet refresh if needed
 
 
-        self.album_art_placeholder.config(bg=theme["progress_fill"]) # Placeholder color
-
-        # Apply to children
-        for child in self.winfo_children():
-            if isinstance(child, (ttk.Label, ttk.Button, ttk.Frame, ttk.Scale)):
-                self.parent_app._recursive_theme_update(child) # Use app's recursive update
-            elif isinstance(child, tk.Canvas): # For album art placeholder
-                 child.config(bg=theme["progress_fill"])
-
-
-# --- MusicovaApp Class ---
-class MusicovaApp:
-    def __init__(self, root_tk):
-        self.root = root_tk
-        self.root.title("Musicova")
-        self.root.geometry("850x750")
-
-        try:
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
-            pygame.init() # Also init pygame itself for event loop if needed for timers
-        except pygame.error as e:
-            print(f"Error initializing pygame.mixer: {e}")
-
-        self.current_theme = "light"
-        self._init_fonts() # Initialize fonts first
-        self._apply_styles() # Then apply styles that might use these fonts
-
-        self.container = tk.Frame(self.root)
-        self.container.pack(fill="both", expand=True)
-        self._apply_theme_to_widget(self.container, "bg")
-
-        self._create_global_buttons()
-
-        self.frames = {}
-        self.frames["home"] = self.create_home_screen(self.container)
-        self.frames["player"] = self.create_player_screen(self.container)
+# --- MusicovaApp Class (QMainWindow) ---
+class MusicovaApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.current_theme = "light" # Default theme
+        self._init_pygame()
+        self._init_fonts() # Initialize QFont objects
+        self._init_ui()
+        self.apply_stylesheet() # Apply initial theme
 
         self.playlist = [] # Stores AudioTrackWidget instances
         self.currently_playing_widget = None
-        self.progress_update_timer_id = None
-        self.active_channel = None # Store the channel used for playback
-        self.default_button_relief = None # Store default relief for TButton
+        self.playback_start_time_abs = 0 # time.monotonic() when playback started/resumed
+        self.paused_at_sec = 0 # Position where playback was paused
 
+        # Pygame setup for audio playback
+        self.audio_channel = pygame.mixer.Channel(0) # Use a specific channel
+
+        self.progress_update_timer = QTimer(self)
+        self.progress_update_timer.timeout.connect(self._update_current_track_progress)
+        self.progress_update_timer.setInterval(250) # ms
 
         self.show_frame("home")
-        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+
+    def _init_pygame(self):
+        try:
+            pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=2048) # Using 1 channel for simplicity
+            pygame.init() # Init other modules if needed
+        except pygame.error as e:
+            print(f"Error initializing pygame.mixer: {e}")
+            # Show error dialog to user?
+
+    def _init_fonts(self):
+        # Load custom font if specified and available
+        # For FontAwesome, it's better to use a font that includes these glyphs
+        # or ensure a system font with them is available.
+        # For DynaPuff, load it if path is correct.
+        # Fallback to generic families if custom font fails.
+
+        # It's good practice to load custom fonts using QFontDatabase
+        font_db = self.fontDatabase() if hasattr(self, 'fontDatabase') else QApplication.fontDatabase()
+
+        dyna_puff_id = font_db.addApplicationFont(FONT_PATH)
+        dyna_puff_family_name = "DynaPuff"
+        if dyna_puff_id != -1:
+            dyna_puff_family_name = QFontDatabase.applicationFontFamilies(dyna_puff_id)[0]
+        else:
+            print(f"Warning: Could not load font {FONT_PATH}. Using system default.")
+            dyna_puff_family_name = "Arial" # Fallback
+
+        # For icons, rely on a system font that supports them or bundle a specific one.
+        # Common choices: "Font Awesome 6 Free", "FontAwesome" (older versions might be named this)
+        # Or use a more generic approach:
+        icon_font_family = "Arial" # Fallback, many systems have some icon support in Arial/Segoe UI Symbol
+        # A more robust solution for icons is SVG or QIcon.fromTheme if using standard icons.
+        # For now, assume text characters are sufficient and a supporting font is present.
+
+        self.font_families = {
+            "default": dyna_puff_family_name,
+            "icon": icon_font_family # Or a specific FontAwesome font name if installed/bundled
+        }
+
+        theme_settings = THEME_COLORS[self.current_theme] # Use current theme for initial font sizes
+        self.fonts = {
+            "title": QFont(self.font_families["default"], theme_settings["font_size_title"], QFont.Bold),
+            "subtitle": QFont(self.font_families["default"], theme_settings["font_size_subtitle"]),
+            "button": QFont(self.font_families["default"], theme_settings["font_size_button"], QFont.Bold),
+            "player_title": QFont(self.font_families["default"], theme_settings["font_size_player_title"], QFont.Bold),
+            "track_name": QFont(self.font_families["default"], theme_settings["font_size_track_name"]),
+            "time": QFont(self.font_families["default"], theme_settings["font_size_time"]),
+            "icon": QFont(self.font_families["icon"], theme_settings["font_size_icon_button"]) # For icon buttons
+        }
 
 
-    def _init_fonts(self): # Adjusted font sizes slightly
+    def _generate_qss(self):
         theme = THEME_COLORS[self.current_theme]
-        font_family = theme["font_family"]
-        icon_font_family = "FontAwesome"
-        default_font = "Arial"
+        # Note: Font family in QSS might not always work reliably for custom fonts loaded via QFontDatabase.
+        # It's often better to set fonts directly on widgets.
+        # However, we can try. If issues, remove font-family from QSS and rely on direct QFont application.
+        font_family_default = self.font_families["default"]
 
-        def get_font(family, size, weight="normal"):
-            try:
-                return font.Font(family=family, size=size, weight=weight)
-            except tk.TclError:
-                print(f"Warning: '{family}' font not found for size {size}. Using '{default_font}'.")
-                return font.Font(family=default_font, size=size, weight=weight)
+        qss = f"""
+            QMainWindow, QWidget#centralWidget {{
+                background-color: {theme['bg']};
+            }}
+            QWidget#home_frame, QWidget#player_frame {{
+                background-color: {theme['bg']};
+            }}
+            QLabel {{
+                color: {theme['text']};
+                background-color: transparent; /* Ensure labels don't obscure parent bg */
+            }}
+            QLabel#TitleLabel {{
+                color: {theme['title_text']};
+                font-size: {theme['font_size_title']}px; /* Sizes in px for QSS */
+                font-weight: bold;
+            }}
+             QLabel#PlayerTitleLabel {{
+                color: {theme['title_text']};
+                font-size: {theme['font_size_player_title']}px;
+                font-weight: bold;
+            }}
+            QLabel#SubtitleLabel {{
+                color: {theme['text']};
+                font-size: {theme['font_size_subtitle']}px;
+            }}
+            QPushButton, QPushButton#TButton {{ /* General buttons */
+                background-color: {theme['button_bg']};
+                color: {theme['button_text']};
+                border: 1px solid {theme['button_text']};
+                padding: 8px 12px;
+                font-size: {theme['font_size_button']}px;
+                font-weight: bold;
+                border-radius: 4px; /* Add some rounded corners */
+            }}
+            QPushButton:hover, QPushButton#TButton:hover {{
+                background-color: {theme['hover_bg']};
+            }}
+            QPushButton:pressed, QPushButton#TButton:pressed {{
+                background-color: {theme['progress_fill']}; /* Use progress_fill for pressed */
+                color: {theme['button_bg']};
+            }}
+            QPushButton:disabled, QPushButton#TButton:disabled {{
+                background-color: {theme['disabled_bg']};
+                color: #909090;
+            }}
 
-        self.font_title = get_font(font_family, theme["font_size_title"], "bold")
-        self.font_subtitle = get_font(font_family, theme["font_size_subtitle"])
-        self.font_button = get_font(font_family, theme["font_size_button"], "bold")
-        self.font_player_title = get_font(font_family, theme["font_size_player_title"], "bold")
-        self.font_track_name = get_font(font_family, theme["font_size_track_name"], "normal") # Normal weight for track names
-        self.font_time = get_font(font_family, theme["font_size_time"])
-        self.font_icon = get_font(icon_font_family, theme["font_size_button"]) # Icon size similar to button text
-        self.font_icon_small = get_font(icon_font_family, theme["font_size_icon_button"])
+            /* Icon buttons on cards - plain style, color from progress_fill */
+            QPushButton#IconPlainButton {{
+                background-color: transparent;
+                color: {theme['progress_fill']};
+                border: none;
+                padding: 3px;
+                font-size: {theme['font_size_icon_button']}px; /* Ensure font is set for icons */
+            }}
+            QPushButton#IconPlainButton:hover {{
+                color: {theme['text']}; /* Or a lighter/darker shade of progress_fill */
+            }}
+            QPushButton#IconPlainButton:pressed {{
+                color: {theme['hover_bg']};
+            }}
+            QPushButton#IconPlainButton:disabled {{
+                color: {theme['disabled_bg']};
+            }}
 
-
-    def _apply_styles(self, update_fonts=False):
-        if update_fonts: self._init_fonts()
-        style = ttk.Style()
-        theme = THEME_COLORS[self.current_theme]
-        style.theme_use('clam') # Using 'clam' as it's more customizable
-
-        # Store default relief if not already stored
-        if self.default_button_relief is None:
-            # Create a dummy button to get its default relief, then destroy it
-            dummy_button = ttk.Button(self.root)
-            self.default_button_relief = dummy_button.cget("relief")
-            dummy_button.destroy()
-
-        # --- General Widget Styling ---
-        style.configure("TFrame", background=theme["bg"])
-        style.configure("TLabel", background=theme["bg"], foreground=theme["text"], font=self.font_subtitle)
-
-        # General TButton style (for main navigation, import, clear etc.)
-        style.configure("TButton",
-                        background=theme["button_bg"],
-                        foreground=theme["button_text"],
-                        font=self.font_button,
-                        padding=[12, 8], # Adjusted padding
-                        borderwidth=1, # Minimal border
-                        relief=tk.RAISED) # Use relief for a bit of depth
-        style.map("TButton",
-                  background=[('active', theme["hover_bg"]), ('!disabled', theme["button_bg"])],
-                  foreground=[('!disabled', theme["button_text"])],
-                  relief=[('pressed', tk.SUNKEN), ('!pressed', tk.RAISED)])
-
-        # Icon TButton style (for track card controls: play/pause, remove)
-        style.configure("Icon.TButton",
-                        font=self.font_icon_small,
-                        padding=3,
-                        background=theme["card_bg"], # Background matches card
-                        foreground=theme["progress_fill"], # Icon color from progress_fill
-                        borderwidth=1,
-                        relief=self.default_button_relief) # Flat look for icon buttons on cards
-        style.map("Icon.TButton",
-                  foreground=[('active', theme["text"]), ('!disabled', theme["progress_fill"])],
-                  background=[('active', theme["hover_bg"]), ('!disabled', theme["card_bg"])])
-
-        # --- Specific Named Styles ---
-        style.configure("Title.TLabel", foreground=theme["title_text"], font=self.font_title, background=theme["bg"])
-        style.configure("Subtitle.TLabel", foreground=theme["text"], font=self.font_subtitle, background=theme["bg"])
-        style.configure("PlayerTitle.TLabel", foreground=theme["title_text"], font=self.font_player_title, background=theme["bg"])
-
-        # Style for TCombobox
-        style.configure("TCombobox",
-                        font=self.font_button,
-                        padding=5,
-                        fieldbackground=theme["button_bg"],
-                        selectbackground=theme["button_bg"], # Background of selected item in dropdown
-                        selectforeground=theme["button_text"],
-                        foreground=theme["button_text"],
-                        arrowcolor=theme["button_text"],
-                        borderwidth=1)
-        style.map("TCombobox",
-            fieldbackground=[('readonly', theme["button_bg"])],
-            selectbackground=[('readonly', theme["button_bg"])], # Ensure dropdown selection bg matches
-            selectforeground=[('readonly', theme["button_text"])],
-            foreground=[('readonly', theme["button_text"])])
-        self.root.option_add('*TCombobox*Listbox.font', self.font_button)
-        self.root.option_add('*TCombobox*Listbox.background', theme["button_bg"])
-        self.root.option_add('*TCombobox*Listbox.foreground', theme["button_text"])
-        self.root.option_add('*TCombobox*Listbox.selectBackground', theme["progress_fill"]) # Highlight color for dropdown items
-        self.root.option_add('*TCombobox*Listbox.selectForeground', theme.get("card_bg", "white"))
+            /* Dark mode toggle button - specific styling if needed, or use general QPushButton */
+            QPushButton#DarkModeButton {{
+                 /* font-family: '{self.font_families["icon"]}'; */ /* Set font directly for reliability */
+                 font-size: {theme['font_size_icon_button']}px; /* Larger for visibility */
+                 padding: 5px;
+                 border-radius: 15px; /* Circular */
+                 min-width: 30px; /* Ensure it's circular */
+                 max-width: 30px;
+                 min-height: 30px;
+                 max-height: 30px;
+            }}
 
 
-        # Style for Vertical.TScrollbar
-        style.configure("Vertical.TScrollbar",
-                        background=theme["button_bg"],
-                        troughcolor=theme["progress_bg"],
-                        borderwidth=0,
-                        arrowcolor=theme["button_text"],
-                        relief=tk.FLAT)
-        style.map("Vertical.TScrollbar",
-                  background=[('active', theme["hover_bg"])],
-                  arrowcolor=[('!disabled', theme["button_text"])])
+            QComboBox {{
+                background-color: {theme['button_bg']};
+                color: {theme['button_text']};
+                border: 1px solid {theme['button_text']};
+                padding: 5px;
+                font-size: {theme['font_size_button']}px;
+                border-radius: 3px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QComboBox QAbstractItemView {{ /* Dropdown list style */
+                background-color: {theme['button_bg']};
+                color: {theme['button_text']};
+                selection-background-color: {theme['progress_fill']};
+                selection-color: {theme['button_bg']};
+            }}
 
-        # --- Card Styles (used by AudioTrackWidget) ---
-        style.configure("Card.TFrame", background=theme["card_bg"], relief=tk.RIDGE, borderwidth=1) # Subtle ridge
-        # Active Card Style - used when a track is playing
-        style.configure("ActiveCard.TFrame", background=theme["card_bg"], relief=tk.RIDGE, borderwidth=2, bordercolor=theme["progress_fill"])
+            QScrollArea {{
+                background-color: {theme['bg']};
+                border: none;
+            }}
+            QScrollBar:vertical {{
+                border: none;
+                background: {theme['progress_bg']};
+                width: 10px;
+                margin: 0px 0px 0px 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {theme['button_bg']};
+                min-height: 20px;
+                border-radius: 5px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+             QScrollBar:horizontal {{
+                border: none;
+                background: {theme['progress_bg']};
+                height: 10px;
+                margin: 0px 0px 0px 0px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {theme['button_bg']};
+                min-width: 20px;
+                border-radius: 5px;
+            }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+                width: 0px;
+            }}
 
-        style.configure("CardInner.TFrame", background=theme["card_bg"])
-        style.configure("TrackName.TLabel", background=theme["card_bg"], foreground=theme["text"], font=self.font_track_name)
-        style.configure("Time.TLabel", background=theme["card_bg"], foreground=theme["text"], font=self.font_time)
 
-        # Style for Player.Horizontal.TScale (Progress bars and Volume sliders)
-        style.configure("Player.Horizontal.TScale",
-                        background=theme["card_bg"], # Background of the scale widget itself
-                        troughcolor=theme["progress_bg"], # Color of the groove
-                        sliderrelief=tk.FLAT, # Thumb relief
-                        sliderthickness=12, # Thickness of the thumb
-                        borderwidth=0,
-                        relief=tk.FLAT)
-        # Note: ttk.Scale thumb color is hard to style directly without custom elements.
-        # The 'background' option in configure often refers to the widget background, not thumb.
-        # Some themes/platforms might allow 'slidercolor' or similar, but it's not standard.
-        # We rely on troughcolor for the track and the system/theme's default thumb appearance.
+            /* AudioTrackWidget Card Styling */
+            QWidget#AudioTrackWidgetCard {{
+                background-color: {theme['card_bg']};
+                border: 1px solid {theme['progress_bg']};
+                border-radius: 5px; /* Rounded corners for cards */
+            }}
+            QWidget#AudioTrackWidgetCard[active="true"] {{ /* Custom property for active card */
+                border: 2px solid {theme['progress_fill']};
+            }}
+            QLabel#TrackNameLabel {{
+                color: {theme['text']};
+                background-color: transparent; /* Important for card_bg to show */
+                font-size: {theme['font_size_track_name']}px;
+            }}
+            QLabel#TimeLabel {{
+                color: {theme['text']};
+                background-color: transparent;
+                font-size: {theme['font_size_time']}px;
+            }}
 
-        self._update_all_widget_themes()
+            QSlider#ProgressSlider::groove:horizontal {{
+                border: 1px solid {theme['progress_bg']};
+                height: 8px;
+                background: {theme['progress_bg']};
+                margin: 2px 0;
+                border-radius: 4px;
+            }}
+            QSlider#ProgressSlider::handle:horizontal {{
+                background: {theme['progress_fill']};
+                border: 1px solid {theme['progress_fill']};
+                width: 12px;
+                height: 12px;
+                margin: -2px 0;
+                border-radius: 6px;
+            }}
+            QSlider#VolumeSlider::groove:horizontal {{
+                height: 4px; background: {theme['progress_bg']}; border-radius: 2px;
+            }}
+            QSlider#VolumeSlider::handle:horizontal {{
+                background: {theme['progress_fill']}; width: 10px; height: 10px; border-radius: 5px; margin: -3px 0;
+            }}
 
-    def _apply_theme_to_widget(self, widget, *style_elements):
-        theme = THEME_COLORS[self.current_theme]
-        config = {}
-        if "bg" in style_elements: config["background"] = theme["bg"]
-        if "fg" in style_elements or "text" in style_elements: config["foreground"] = theme["text"]
-        if "button_bg" in style_elements: config["background"] = theme["button_bg"]
-        if "button_text" in style_elements: config["foreground"] = theme["button_text"]
-        if "card_bg" in style_elements: config["background"] = theme["card_bg"]
-        if "card_text" in style_elements: config["foreground"] = theme["text"]
-        if "title_text" in style_elements: config["foreground"] = theme["title_text"]
-        if "progress_fill" in style_elements: config["background"] = theme["progress_fill"] # For canvas placeholder
+        """
+        # Apply font-family using direct QFont objects for reliability over QSS font-family
+        return qss
 
-        if config:
-            try:
-                current_style = widget.cget("style") if isinstance(widget, ttk.Widget) else ""
-                # For ttk.Scale, set background for the widget, troughcolor is part of its style
-                if isinstance(widget, ttk.Scale) and "Player.Horizontal.TScale" in current_style:
-                    pass # Already handled by style config
-                else:
-                    widget.configure(**config)
-
-                # Special handling for Combobox listbox theming (applied via option_add previously)
-                if isinstance(widget, ttk.Combobox):
-                    # Re-apply listbox options as they might be reset or need theme update
-                    widget.tk.call("eval", f"ttk::style theme settings {style.theme_use()} {{ \
-                        ttk::combobox::PopdownWindow::background {theme['button_bg']}; \
-                        ttk::combobox::PopdownWindow::foreground {theme['button_text']}; \
-                    }}")
-
-            except tk.TclError:
-                pass
-
-    def _update_all_widget_themes(self):
-        self._apply_theme_to_widget(self.container, "bg")
-        # Global buttons like dark_mode_toggle are placed on self.root, not self.container
-        if hasattr(self, 'dark_mode_toggle_button') and self.dark_mode_toggle_button.winfo_exists():
-            self._recursive_theme_update(self.dark_mode_toggle_button) # Theme this button too
-
-        for frame_key in self.frames:
-            frame = self.frames[frame_key]
-            if frame.winfo_exists(): # Check if frame exists
-                self._apply_theme_to_widget(frame, "bg")
-                for child in frame.winfo_children():
-                    self._recursive_theme_update(child)
-
-        if hasattr(self, 'dark_mode_toggle_button') and self.dark_mode_toggle_button.winfo_exists():
-            self._apply_theme_to_widget(self.dark_mode_toggle_button, "button_bg", "button_text")
-            self.dark_mode_toggle_button.configure(font=self.font_icon)
-
-        if hasattr(self, 'back_button_player') and self.back_button_player.winfo_exists():
-             self._apply_theme_to_widget(self.back_button_player, "button_bg", "button_text")
-             self.back_button_player.configure(font=self.font_button) # It has text and icon
-
-        # Update playlist items
+    def apply_stylesheet(self):
+        qss = self._generate_qss()
+        self.setStyleSheet(qss)
+        # Re-apply fonts directly as QSS font-family can be unreliable for app-loaded fonts
+        self._update_all_widget_fonts()
+        # Update themes for child widgets if they have specific logic
         for track_widget in self.playlist:
-            if track_widget.winfo_exists():
-                track_widget.update_theme()
+            track_widget.update_theme()
 
 
-    def _recursive_theme_update(self, widget):
-        if not widget.winfo_exists(): return
+    def _update_all_widget_fonts(self):
+        # This method should iterate through key widgets and apply QFont objects from self.fonts
+        # For example, for widgets created directly in MusicovaApp:
+        if hasattr(self, 'home_screen_content'): # Check if home screen elements exist
+            self.home_screen_content["title_label"].setFont(self.fonts["title"])
+            self.home_screen_content["subtitle_label"].setFont(self.fonts["subtitle"])
+            self.home_screen_content["access_button"].setFont(self.fonts["button"])
 
-        theme = THEME_COLORS[self.current_theme]
-        widget_style_name = widget.winfo_class() # e.g. TButton, TFrame, TCombobox
+        if hasattr(self, 'player_screen_content'): # Check for player screen elements
+            self.player_screen_content["title_label"].setFont(self.fonts["player_title"])
+            self.player_screen_content["back_button"].setFont(self.fonts["button"]) # Assuming icon + text
+            self.player_screen_content["import_type_combo"].setFont(self.fonts["button"])
+            self.player_screen_content["import_button"].setFont(self.fonts["button"])
+            self.player_screen_content["clear_playlist_button"].setFont(self.fonts["button"])
 
-        # General theming based on widget type
-        if isinstance(widget, (ttk.Button)):
-            if "Icon" in widget.cget("style"): # For Icon.TButton
-                widget.configure(font=self.font_icon_small)
-                self._apply_theme_to_widget(widget, "card_bg", "progress_fill") # Special case for icon buttons on cards
-            else: # Normal TButton
-                widget.configure(font=self.font_button)
-                self._apply_theme_to_widget(widget, "button_bg", "button_text")
-        elif isinstance(widget, ttk.Combobox):
-            widget.configure(font=self.font_button)
-            # Combobox theming is complex due to listbox and field parts
-            self._apply_theme_to_widget(widget, "button_bg", "button_text") # Basic theming
-        elif isinstance(widget, ttk.Scale):
-            self._apply_theme_to_widget(widget, "card_bg") # Background of scale itself
-            widget.configure(troughcolor=theme["progress_bg"])
-        elif isinstance(widget, ttk.Label):
-            style_name = widget.cget("style")
-            if "Title.TLabel" in style_name or "PlayerTitle.TLabel" in style_name :
-                widget.configure(font=self.font_player_title if "Player" in style_name else self.font_title)
-                self._apply_theme_to_widget(widget, "bg", "title_text")
-            elif "Subtitle.TLabel" in style_name:
-                widget.configure(font=self.font_subtitle)
-                self._apply_theme_to_widget(widget, "bg", "text")
-            elif "TrackName.TLabel" in style_name:
-                widget.configure(font=self.font_track_name)
-                self._apply_theme_to_widget(widget, "card_bg", "text")
-            elif "Time.TLabel" in style_name:
-                widget.configure(font=self.font_time)
-                self._apply_theme_to_widget(widget, "card_bg", "text")
-            else: # Default TLabel
-                widget.configure(font=self.font_subtitle) # Or a more generic font
-                self._apply_theme_to_widget(widget, "bg", "text")
-        elif isinstance(widget, (ttk.Frame, tk.Frame)):
-             # For frames inside cards (CardInner.TFrame) or general frames (TFrame)
-            style_name = widget.cget("style") if isinstance(widget, ttk.Frame) else ""
-            if "Card" in style_name : # Catches Card.TFrame and CardInner.TFrame
-                 self._apply_theme_to_widget(widget, "card_bg")
-            else: # General TFrame or tk.Frame
-                 self._apply_theme_to_widget(widget, "bg")
-        elif isinstance(widget, tk.Canvas): # e.g., tracks_canvas or album_art_placeholder
-            if widget == getattr(self, 'tracks_canvas', None): # Main tracks canvas
-                self._apply_theme_to_widget(widget, "bg")
-            else: # Album art canvas
-                self._apply_theme_to_widget(widget, "progress_fill") # Use progress_fill as placeholder bg
+        if hasattr(self, 'dark_mode_toggle_button'):
+            self.dark_mode_toggle_button.setFont(self.fonts["icon"]) # Specific icon font
 
-        for child in widget.winfo_children():
-            self._recursive_theme_update(child)
+        # For dynamically created AudioTrackWidgets, their update_theme method should handle fonts.
+        for track_widget in self.playlist:
+            if track_widget: # and track_widget.isVisible(): # Check if widget is valid
+                 track_widget.update_theme()
 
 
-    def _create_global_buttons(self):
-        self.dark_mode_toggle_button = ttk.Button(self.root, text=fa.icons['moon'], font=self.font_icon,
-                                                 command=self.toggle_dark_mode, style="TButton", width=3)
-        self.dark_mode_toggle_button.place(relx=0.98, rely=0.02, anchor="ne")
-        self._apply_theme_to_widget(self.dark_mode_toggle_button, "button_bg", "button_text")
+    def _init_ui(self):
+        self.setWindowTitle("Musicova")
+        self.setGeometry(100, 100, 850, 750) # x, y, width, height
+
+        self.central_widget = QWidget(self)
+        self.central_widget.setObjectName("centralWidget")
+        self.setCentralWidget(self.central_widget)
+
+        self.main_layout = QVBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(0,0,0,0) # Full window usage
+
+        # Global buttons (e.g., dark mode toggle) can be part of a top bar or overlay
+        # For simplicity, let's add it to a layout within the central widget for now.
+        # A more common approach for a main window is to have a status bar or a dedicated controls bar.
+
+        top_bar_layout = QHBoxLayout()
+        top_bar_layout.addStretch()
+        self.dark_mode_toggle_button = QPushButton(FA_ICONS["moon"])
+        self.dark_mode_toggle_button.setObjectName("DarkModeButton") # For specific styling
+        self.dark_mode_toggle_button.setToolTip("Toggle Dark/Light Mode")
+        self.dark_mode_toggle_button.clicked.connect(self.toggle_dark_mode)
+        self.dark_mode_toggle_button.setFixedSize(32,32) # Make it a bit larger and square
+        top_bar_layout.addWidget(self.dark_mode_toggle_button)
+        self.main_layout.addLayout(top_bar_layout)
+
+
+        self.stacked_widget = QStackedWidget(self)
+        self.main_layout.addWidget(self.stacked_widget)
+
+        self.frames = {} # Store page widgets
+        self.frames["home"] = self._create_home_screen()
+        self.frames["player"] = self._create_player_screen()
+
+        self.stacked_widget.addWidget(self.frames["home"])
+        self.stacked_widget.addWidget(self.frames["player"])
+
 
     def toggle_dark_mode(self):
         self.current_theme = "dark" if self.current_theme == "light" else "light"
-        new_icon = fa.icons['sun'] if self.current_theme == "dark" else fa.icons['moon']
-        self.dark_mode_toggle_button.config(text=new_icon)
-        self._apply_styles(update_fonts=True)
+        new_icon = FA_ICONS['sun'] if self.current_theme == "dark" else FA_ICONS['moon']
+        self.dark_mode_toggle_button.setText(new_icon)
+        self._init_fonts() # Re-init fonts in case sizes change with theme (they do in THEME_COLORS)
+        self.apply_stylesheet() # Re-apply all styles and fonts
 
-    def create_home_screen(self, parent): # Largely unchanged, ensure fonts are from self.font_...
-        home_frame = ttk.Frame(parent, style="TFrame", name="home_frame")
-        home_frame.grid_columnconfigure(0, weight=1)
+    def _create_home_screen(self):
+        home_widget = QWidget()
+        home_widget.setObjectName("home_frame") # For QSS
+        layout = QVBoxLayout(home_widget)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+
+        self.home_screen_content = {} # Store refs to widgets for font updates
+
+        # Logo
+        logo_label = QLabel()
         try:
-            logo_image = Image.open("Python/Musicova logo v2.png")
-            aspect_ratio = logo_image.height / logo_image.width; new_width = 350
-            new_height = int(new_width * aspect_ratio)
-            logo_image = logo_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            self.logo_photo_image = ImageTk.PhotoImage(logo_image)
-            logo_label = ttk.Label(home_frame, image=self.logo_photo_image, style="TLabel")
-            logo_label.grid(row=0, column=0, pady=(60, 20))
+            pixmap = QPixmap(LOGO_PATH)
+            if not pixmap.isNull():
+                logo_label.setPixmap(pixmap.scaled(350, int(350 * pixmap.height() / pixmap.width() if pixmap.width() > 0 else 0), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            else:
+                logo_label.setText("Musicova Logo (Not Found)") # Fallback text
         except Exception as e:
-            logo_label = ttk.Label(home_frame, text="Musicova", style="Title.TLabel")
-            logo_label.grid(row=0, column=0, pady=(60, 20))
-        self._apply_theme_to_widget(logo_label, "bg")
+            print(f"Error loading logo: {e}")
+            logo_label.setText("Musicova Logo (Error)")
+        logo_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(logo_label)
 
-        title_label = ttk.Label(home_frame, text="Musicova", style="Title.TLabel", font=self.font_title)
-        title_label.grid(row=1, column=0, pady=10)
-        subtitle_label = ttk.Label(home_frame, text="Your Personal Music Space", style="Subtitle.TLabel", font=self.font_subtitle)
-        subtitle_label.grid(row=2, column=0, pady=(0, 30))
-        access_button = ttk.Button(home_frame, text="Access Musicova Player", style="TButton",
-                                   command=lambda: self.show_frame("player"), font=self.font_button)
-        access_button.grid(row=3, column=0, pady=20, ipady=10)
-        return home_frame
+        title_label = QLabel("Musicova")
+        title_label.setObjectName("TitleLabel") # For QSS
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+        self.home_screen_content["title_label"] = title_label
 
-    def create_player_screen(self, parent): # Ensure fonts are from self.font_...
-        player_frame = ttk.Frame(parent, style="TFrame", name="player_frame")
-        player_frame.pack(fill="both", expand=True)
-        top_bar = ttk.Frame(player_frame, style="TFrame", height=50)
-        top_bar.pack(fill="x", side="top", pady=(5,0))
+        subtitle_label = QLabel("Your Personal Music Space")
+        subtitle_label.setObjectName("SubtitleLabel") # For QSS
+        subtitle_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(subtitle_label)
+        self.home_screen_content["subtitle_label"] = subtitle_label
 
-        self.back_button_player = ttk.Button(top_bar, text=f"{fa.icons['arrow-left']} Back", font=self.font_button,
-                                 command=lambda: self.show_frame("home"), style="TButton")
-        self.back_button_player.pack(side="left", padx=20, pady=10)
+        access_button = QPushButton("Access Musicova Player")
+        access_button.setObjectName("TButton") # General button style
+        access_button.clicked.connect(lambda: self.show_frame("player"))
+        access_button.setFixedHeight(50) # Make button taller
+        layout.addWidget(access_button, alignment=Qt.AlignCenter)
+        self.home_screen_content["access_button"] = access_button
 
-        player_title_label = ttk.Label(player_frame, text="Musicova Player", style="PlayerTitle.TLabel", font=self.font_player_title)
-        player_title_label.pack(pady=(10, 20))
+        layout.addStretch() # Push content towards center/top
 
-        import_controls_frame = ttk.Frame(player_frame, style="TFrame")
-        import_controls_frame.pack(pady=10)
-        self.import_type_var = tk.StringVar(value="Import File(s)")
-        import_type_combo = ttk.Combobox(import_controls_frame, textvariable=self.import_type_var,
-                                         values=["Import File(s)", "Import Folder"], state="readonly", font=self.font_button, style="TCombobox", width=15)
-        import_type_combo.pack(side="left", padx=5)
-        import_button = ttk.Button(import_controls_frame, text="Import", style="TButton", command=self.handle_import, font=self.font_button)
-        import_button.pack(side="left", padx=5)
-        clear_playlist_button = ttk.Button(import_controls_frame, text="Clear Playlist", style="TButton", command=self.handle_clear_playlist, font=self.font_button)
-        clear_playlist_button.pack(side="left", padx=5)
+        return home_widget
 
-        tracks_outer_frame = ttk.Frame(player_frame, style="TFrame")
-        tracks_outer_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        self.tracks_canvas = tk.Canvas(tracks_outer_frame, borderwidth=0)
-        self._apply_theme_to_widget(self.tracks_canvas, "bg")
-        scrollbar = ttk.Scrollbar(tracks_outer_frame, orient="vertical", command=self.tracks_canvas.yview, style="Vertical.TScrollbar")
-        self.tracks_canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        self.tracks_canvas.pack(side="left", fill="both", expand=True)
-        self.audio_tracks_frame = ttk.Frame(self.tracks_canvas, style="TFrame") # This frame gets Card.TFrame style from children
-        self.tracks_canvas_window = self.tracks_canvas.create_window((0, 0), window=self.audio_tracks_frame, anchor="nw")
+    def _create_player_screen(self):
+        player_widget = QWidget()
+        player_widget.setObjectName("player_frame")
+        main_layout = QVBoxLayout(player_widget)
+        main_layout.setContentsMargins(10,10,10,10)
+        main_layout.setSpacing(10)
 
-        self.audio_tracks_frame.bind("<Configure>", lambda e: self._on_tracks_frame_configure())
-        self.tracks_canvas.bind("<Configure>", lambda e: self._on_tracks_canvas_configure(e))
+        self.player_screen_content = {}
 
-        return player_frame
+        # Top Bar: Back Button
+        top_bar_layout = QHBoxLayout()
+        back_button = QPushButton(f"{FA_ICONS['arrow-left']} Back")
+        back_button.setObjectName("TButton")
+        back_button.clicked.connect(lambda: self.show_frame("home"))
+        top_bar_layout.addWidget(back_button, alignment=Qt.AlignLeft)
+        top_bar_layout.addStretch()
+        main_layout.addLayout(top_bar_layout)
+        self.player_screen_content["back_button"] = back_button
 
-    def _on_tracks_frame_configure(self):
-        self.tracks_canvas.configure(scrollregion=self.tracks_canvas.bbox("all"))
-        # Update the width of the items inside the canvas to match the canvas width minus scrollbar
-        canvas_width = self.tracks_canvas.winfo_width()
-        if canvas_width > 1: # Ensure valid width
-             for widget in self.audio_tracks_frame.winfo_children():
-                if isinstance(widget, AudioTrackWidget):
-                    widget.winfo_width() # Force update of width if needed
-                    # self.tracks_canvas.itemconfigure(self.tracks_canvas_window, width=canvas_width - 20) # Approx scrollbar width
-                    # widget.configure(width=canvas_width - 25) # Give a little padding
-                    # widget.track_name_label.config(wraplength=canvas_width - 150) # Adjust wraplength
-                    pass # Width of AudioTrackWidget is managed by its grid and packing
+        # Player Title
+        player_title_label = QLabel("Musicova Player")
+        player_title_label.setObjectName("PlayerTitleLabel")
+        player_title_label.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(player_title_label)
+        self.player_screen_content["title_label"] = player_title_label
 
-    def _on_tracks_canvas_configure(self, event):
-        # Update the width of the frame inside the canvas to match the canvas width
-        canvas_width = event.width
-        if canvas_width > 1 :
-             self.tracks_canvas.itemconfigure(self.tracks_canvas_window, width=canvas_width)
+        # Import Controls
+        import_controls_layout = QHBoxLayout()
+        import_controls_layout.setAlignment(Qt.AlignCenter)
+        self.import_type_combo = QComboBox()
+        self.import_type_combo.addItems(["Import File(s)", "Import Folder"])
+        self.player_screen_content["import_type_combo"] = self.import_type_combo
 
+        import_button = QPushButton("Import")
+        import_button.setObjectName("TButton")
+        import_button.clicked.connect(self.handle_import)
+        self.player_screen_content["import_button"] = import_button
+
+        clear_playlist_button = QPushButton("Clear Playlist")
+        clear_playlist_button.setObjectName("TButton")
+        clear_playlist_button.clicked.connect(self.handle_clear_playlist)
+        self.player_screen_content["clear_playlist_button"] = clear_playlist_button
+
+        import_controls_layout.addWidget(self.import_type_combo)
+        import_controls_layout.addWidget(import_button)
+        import_controls_layout.addWidget(clear_playlist_button)
+        main_layout.addLayout(import_controls_layout)
+
+        # Tracks Area (Scrollable)
+        self.tracks_scroll_area = QScrollArea()
+        self.tracks_scroll_area.setWidgetResizable(True)
+        self.tracks_scroll_area.setObjectName("TracksScrollArea") # For QSS
+
+        self.audio_tracks_container_widget = QWidget() # This widget will contain the track cards
+        self.tracks_list_layout = QVBoxLayout(self.audio_tracks_container_widget)
+        self.tracks_list_layout.setAlignment(Qt.AlignTop) # Tracks added to top
+        self.tracks_list_layout.setSpacing(5)
+
+        self.tracks_scroll_area.setWidget(self.audio_tracks_container_widget)
+        main_layout.addWidget(self.tracks_scroll_area)
+
+        return player_widget
+
+    def show_frame(self, frame_key):
+        if frame_key in self.frames:
+            self.stacked_widget.setCurrentWidget(self.frames[frame_key])
+            # Fonts and styles should be reapplied if they depend on which frame is visible,
+            # but with global QSS and direct font setting, this might not be strictly necessary
+            # unless specific visibility-dependent styles are used.
+            self.apply_stylesheet() # Re-apply to ensure styles are correct for the new view
 
     def handle_import(self):
-        import_type = self.import_type_var.get()
+        import_type = self.import_type_combo.currentText()
         files_to_add = []
         if import_type == "Import File(s)":
-            selected_files = filedialog.askopenfilenames(
-                title="Select Audio Files",
-                filetypes=(("Audio Files", "*.mp3 *.wav *.ogg *.flac"), ("All files", "*.*"))
+            selected_files, _ = QFileDialog.getOpenFileNames(
+                self, "Select Audio Files", "",
+                "Audio Files (*.mp3 *.wav *.ogg *.flac);;All files (*.*)"
             )
-            if selected_files: files_to_add.extend(list(selected_files))
+            if selected_files: files_to_add.extend(selected_files)
         elif import_type == "Import Folder":
-            folder_path = filedialog.askdirectory(title="Select Folder")
+            folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
             if folder_path:
                 for item in os.listdir(folder_path):
                     full_path = os.path.join(folder_path, item)
@@ -676,193 +759,193 @@ class MusicovaApp:
                         files_to_add.append(full_path)
 
         if files_to_add:
-            for idx, file_path in enumerate(files_to_add):
-                # Check if track already exists
+            for file_path in files_to_add:
                 if any(track.file_path == file_path for track in self.playlist):
                     print(f"Track {file_path} already in playlist. Skipping.")
                     continue
 
-                track_widget = AudioTrackWidget(self.audio_tracks_frame, self, file_path,
-                                                track_index=len(self.playlist),
-                                                on_play_callback=self.handle_track_play_request,
-                                                on_remove_callback=self.remove_track_from_playlist)
-                track_widget.pack(pady=5, padx=5, fill="x", expand=True)
+                track_widget = AudioTrackWidget(self, file_path, len(self.playlist),
+                                                self.handle_track_play_request,
+                                                self.remove_track_from_playlist)
+                self.tracks_list_layout.addWidget(track_widget)
                 self.playlist.append(track_widget)
-            self._update_all_widget_themes() # Apply theme to new cards
+            self.apply_stylesheet() # Update styles for new cards
 
 
     def handle_clear_playlist(self):
-        if self.currently_playing_widget:
-            self.currently_playing_widget.stop()
-            self.currently_playing_widget = None
-
+        self.stop_current_playback()
         for widget in self.playlist:
-            widget.destroy()
+            widget.deleteLater() # Safe deletion
         self.playlist.clear()
+        self.currently_playing_widget = None
+        if self.progress_update_timer.isActive():
+            self.progress_update_timer.stop()
+        # Clear layout (alternative to deleting one by one if container is recreated)
+        # while self.tracks_list_layout.count():
+        #     child = self.tracks_list_layout.takeAt(0)
+        #     if child.widget():
+        #         child.widget().deleteLater()
 
-        if self.progress_update_timer_id:
-            self.root.after_cancel(self.progress_update_timer_id)
-            self.progress_update_timer_id = None
-
-        pygame.mixer.music.stop() # Stop the global music stream if it was somehow used
 
     def handle_track_play_request(self, track_widget_to_play):
         if self.currently_playing_widget == track_widget_to_play: # Clicked on already playing/paused track
             if track_widget_to_play.is_paused:
-                track_widget_to_play.resume()
-                self.start_progress_updater()
-            elif track_widget_to_play.is_playing:
-                track_widget_to_play.pause()
-                if self.progress_update_timer_id:
-                    self.root.after_cancel(self.progress_update_timer_id)
-                    self.progress_update_timer_id = None
-            else: # Was stopped, play from start
-                track_widget_to_play.play()
-                self.start_progress_updater()
-
+                track_widget_to_play.resume(self.audio_channel)
+                self.playback_start_time_abs = pygame.time.get_ticks() - (self.paused_at_sec * 1000)
+                if not self.progress_update_timer.isActive(): self.progress_update_timer.start()
+            elif track_widget_to_play.is_playing: # Is playing, so pause it
+                track_widget_to_play.pause(self.audio_channel)
+                self.paused_at_sec = (pygame.time.get_ticks() - self.playback_start_time_abs) / 1000.0
+                if self.progress_update_timer.isActive(): self.progress_update_timer.stop()
+            # else: was stopped (neither playing nor paused), effectively a new play from start
         else: # Clicked on a new track
             if self.currently_playing_widget:
-                self.currently_playing_widget.stop() # Stop previous track
+                self.currently_playing_widget.stop(self.audio_channel) # Stop previous track
 
             self.currently_playing_widget = track_widget_to_play
-            self.currently_playing_widget.play()
-            self.start_progress_updater()
+            self.currently_playing_widget.play(self.audio_channel)
+            self.playback_start_time_abs = pygame.time.get_ticks() # Record when this new track started
+            self.paused_at_sec = 0 # Reset paused position
+            if not self.progress_update_timer.isActive(): self.progress_update_timer.start()
 
-    def start_progress_updater(self):
-        if self.progress_update_timer_id:
-            self.root.after_cancel(self.progress_update_timer_id)
-        self._update_current_track_progress()
+        # Synchronize volume for the newly active track
+        if self.currently_playing_widget and self.currently_playing_widget.sound:
+             current_master_volume = self.currently_playing_widget.volume_slider.value() / 100.0
+             self.currently_playing_widget.sound.set_volume(current_master_volume)
+
+
+    def stop_current_playback(self):
+        if self.currently_playing_widget:
+            self.currently_playing_widget.stop(self.audio_channel)
+            self.currently_playing_widget = None
+        if self.progress_update_timer.isActive():
+            self.progress_update_timer.stop()
+
+    def seek_playback(self, seek_time_sec):
+        if self.currently_playing_widget and self.currently_playing_widget.sound:
+            # Pygame Sound objects play from start or a specific time if re-played.
+            # To seek, we stop, then play again with a start offset.
+            # This is not ideal as it might cause a slight audio glitch.
+            # mixer.music.set_pos() is better but we are using Sound objects on a channel.
+
+            # For Sound objects on a channel, the channel itself doesn't support seeking.
+            # We have to stop the sound on the channel and replay it.
+            # The `start` argument to `play()` is for milliseconds.
+
+            self.audio_channel.stop() # Stop current playback on the channel
+
+            # Convert seek_time_sec to milliseconds for the 'maxtime' or 'fade_ms' like parameters
+            # Sound.play(loops, maxtime, fade_ms)
+            # There isn't a direct 'start_at_offset' for channel.play(Sound).
+            # This means true seeking with Sound objects on channels is complex.
+            # A common workaround is to use pygame.mixer.music for single track playback
+            # or to manage segments of audio if precise seeking on Sound objects is needed.
+
+            # Given the current structure with Sound objects:
+            # The best we can do is restart the sound and it will play from the beginning.
+            # The visual progress bar is updated, but audio restarts.
+            # This is a limitation of pygame.mixer.Sound with channels for seeking.
+
+            # Let's assume for now the visual seek is what's primarily achieved,
+            # and if it was playing, it restarts from beginning but timer will reflect the new visual start.
+
+            self.audio_channel.play(self.currently_playing_widget.sound) # Plays from beginning
+            self.playback_start_time_abs = pygame.time.get_ticks() - (seek_time_sec * 1000) # Adjust timer to reflect seek
+
+            if self.currently_playing_widget.is_paused: # If it was paused, re-pause it at the new (visual) position
+                self.audio_channel.pause()
+            elif not self.progress_update_timer.isActive(): # If it was stopped or just seeked, ensure timer runs if meant to be playing
+                self.progress_update_timer.start()
+
+            # Update the display to reflect the seeked time immediately
+            if self.currently_playing_widget.duration_sec > 0:
+                permille = (seek_time_sec / self.currently_playing_widget.duration_sec) * 1000
+                self.currently_playing_widget.set_progress_display(seek_time_sec, permille)
+
 
     def _update_current_track_progress(self):
-        if self.currently_playing_widget and self.currently_playing_widget.is_playing and not self.currently_playing_widget.is_paused:
-            if self.currently_playing_widget.sound:
-                # This is the tricky part: pygame.mixer.Sound objects don't have a get_pos()
-                # We need to simulate it or use a channel which does.
-                # For now, this will not update accurately without further changes to how Sound objects are handled.
-                # A simple approach: if sound is playing and get_busy() is false for its channel, it finished.
+        if self.currently_playing_widget and self.currently_playing_widget.is_playing and \
+           not self.currently_playing_widget.is_paused and self.audio_channel.get_busy():
 
-                # To get position for a Sound object, you'd typically manage it via a Channel.
-                # pygame.mixer.find_channel().get_sound() == self.currently_playing_widget.sound
-                # However, managing channels explicitly adds complexity.
-                # A simpler, less accurate way for demonstration if not using channels:
-                # Assume it's playing until it's explicitly stopped or another starts.
-                # The progress bar won't auto-advance without more work here.
+            # Calculate elapsed time since playback_start_time_abs
+            current_pos_msec = pygame.time.get_ticks() - self.playback_start_time_abs
+            current_pos_sec = current_pos_msec / 1000.0
 
-                # --- Placeholder for accurate progress update ---
-                # This requires a more involved solution, possibly timing based or using channels.
-                # For now, the progress bar is mainly user-draggable or updated on state changes.
-                # If we had a reliable way to get current_pos_sec for a Sound object:
-                # current_pos_sec = get_current_pos_for_sound(self.currently_playing_widget.sound)
-                # if self.currently_playing_widget.duration_sec > 0:
-                #    percentage = (current_pos_sec / self.currently_playing_widget.duration_sec) * 100
-                #    self.currently_playing_widget.set_progress_display(current_pos_sec, percentage)
-                #
-                #    if current_pos_sec >= self.currently_playing_widget.duration_sec:
-                #        self.handle_track_ended(self.currently_playing_widget)
-                #        return # Stop timer for this track
+            if self.currently_playing_widget.duration_sec > 0:
+                percentage_permille = (current_pos_sec / self.currently_playing_widget.duration_sec) * 1000
+                self.currently_playing_widget.set_progress_display(current_pos_sec, percentage_permille)
 
-                # Check if sound finished (very basic check, might not be robust)
-                # This check is not reliable for Sound objects without using Channels.
-                # A Sound object once started will play until its end or stopped.
-                # There's no simple "is_still_playing_on_its_own" status.
-                # We'll rely on the track ending to trigger next or stop.
-                # pygame.mixer.music.set_endevent(pygame.USEREVENT + 1) and checking for that event is for mixer.music, not Sound.
+                if current_pos_sec >= self.currently_playing_widget.duration_sec:
+                    self.handle_track_ended(self.currently_playing_widget)
+            else: # Duration is 0, perhaps error or not loaded
+                 self.currently_playing_widget.set_progress_display(0,0)
 
-                # Let's simulate a simple check for now - if it's marked as playing but somehow not busy (this is flawed)
-                # This part is highly dependent on how playback is managed.
-                # If using Sound.play(), it plays and forgets.
-                # We need to check if the sound is *actually* still making noise.
-                # This often means associating the Sound object with a Channel when playing.
-
-                # For now, the timer will just run. Manual seeking and play/pause works. Auto-next needs track end detection.
-                pass
+        elif self.currently_playing_widget and self.currently_playing_widget.is_playing and \
+             not self.currently_playing_widget.is_paused and not self.audio_channel.get_busy():
+            # Sound finished playing (channel is not busy anymore but we thought it was playing)
+            self.handle_track_ended(self.currently_playing_widget)
 
 
-            self.progress_update_timer_id = self.root.after(250, self._update_current_track_progress) # Update ~4 times a second
-        else:
-            if self.progress_update_timer_id:
-                self.root.after_cancel(self.progress_update_timer_id)
-                self.progress_update_timer_id = None
-
-    def handle_track_ended(self, track_widget): # Called when a track finishes
+    def handle_track_ended(self, track_widget):
         if track_widget == self.currently_playing_widget:
-            track_widget.stop() # Visually reset it
-            # Implement auto-play next or stop behavior here
-            current_idx = self.playlist.index(track_widget)
+            track_widget.stop(self.audio_channel) # Visually reset it
+
+            current_idx = -1
+            try:
+                current_idx = self.playlist.index(track_widget)
+            except ValueError: # Should not happen if logic is correct
+                self.currently_playing_widget = None
+                if self.progress_update_timer.isActive(): self.progress_update_timer.stop()
+                return
+
             if current_idx + 1 < len(self.playlist): # If there's a next track
                 next_track_widget = self.playlist[current_idx + 1]
                 self.handle_track_play_request(next_track_widget) # Play next
             else: # End of playlist
                 self.currently_playing_widget = None
-                # Stop progress updater if it was running
-                if self.progress_update_timer_id:
-                    self.root.after_cancel(self.progress_update_timer_id)
-                    self.progress_update_timer_id = None
+                if self.progress_update_timer.isActive(): self.progress_update_timer.stop()
 
 
     def remove_track_from_playlist(self, track_widget_to_remove):
         if track_widget_to_remove == self.currently_playing_widget:
-            track_widget_to_remove.stop() # Ensure it's stopped
-            self.currently_playing_widget = None
-            if self.progress_update_timer_id:
-                self.root.after_cancel(self.progress_update_timer_id)
-                self.progress_update_timer_id = None
+            self.stop_current_playback() # This also sets currently_playing_widget to None
 
         if track_widget_to_remove in self.playlist:
             self.playlist.remove(track_widget_to_remove)
-        # Re-index subsequent tracks if necessary (optional, depends on how indices are used)
+            self.tracks_list_layout.removeWidget(track_widget_to_remove)
+            track_widget_to_remove.deleteLater() # Important: schedule for deletion
+
+        # Re-index not strictly necessary with object list, but if track_index property is used elsewhere:
         for i, track in enumerate(self.playlist):
             track.track_index = i
 
-        # Update canvas scroll region
-        self.audio_tracks_frame.update_idletasks() # Ensure layout is updated
-        self.tracks_canvas.configure(scrollregion=self.tracks_canvas.bbox("all"))
-
 
     def set_active_card_style(self, track_widget, is_active):
-        theme = THEME_COLORS[self.current_theme]
-        border_color = theme["progress_fill"] if is_active else theme.get("progress_bg","grey")
-        border_width = 2 if is_active else 1
+        # Use a dynamic property for QSS styling
+        track_widget.setProperty("active", is_active)
+        # Re-polish the widget to apply style changes from property
+        track_widget.style().unpolish(track_widget)
+        track_widget.style().polish(track_widget)
+        # self.apply_stylesheet() # Could also reapply global, but might be too much. Polishing should be enough.
 
-        try:
-            if track_widget.winfo_exists():
-                 track_widget.configure(relief=tk.SOLID, borderwidth=border_width, style="Card.TFrame")
-                 # The style itself should define the bordercolor based on theme, but this direct config might be needed for dynamic changes.
-                 # However, ttk widgets are best styled via ttk.Style.
-                 # A better way: define an "ActiveCard.TFrame" style and switch the widget's style.
-                 # For now, direct configuration of border for simplicity, though not ideal for pure ttk.
-                 # This direct border configuration on ttk.Frame might not work as expected.
-                 # Let's ensure Card.TFrame style is updated or a new one is applied.
-                 # A simpler visual cue: change background slightly or add a specific label.
-                 # For now, we rely on the play/pause icon and this border attempt.
-        except tk.TclError:
-            pass # Widget might be gone
-
-
-    def show_frame(self, frame_key):
-        for frame_widget_key in self.frames:
-            self.frames[frame_widget_key].pack_forget()
-
-        frame_to_show = self.frames.get(frame_key)
-        if frame_to_show:
-            frame_to_show.pack(fill="both", expand=True)
-            if hasattr(self, 'back_button_player'):
-                is_player_screen = (frame_key == "player")
-                if is_player_screen: self.back_button_player.pack(side="left", padx=20, pady=10)
-                else: self.back_button_player.pack_forget()
-            self._apply_styles() # Re-apply styles to ensure consistency
-
-    def _on_closing(self):
-        if self.progress_update_timer_id:
-            self.root.after_cancel(self.progress_update_timer_id)
-        if self.currently_playing_widget:
-            self.currently_playing_widget.stop()
+    def closeEvent(self, event): # Override QMainWindow's closeEvent
+        self.stop_current_playback()
+        if self.progress_update_timer.isActive():
+            self.progress_update_timer.stop()
         pygame.mixer.quit()
-        pygame.quit()
-        self.root.destroy()
+        pygame.quit() # Quit pygame itself
+        event.accept()
 
 
 if __name__ == "__main__":
-    root_tk = tk.Tk()
-    app = MusicovaApp(root_tk)
-    root_tk.mainloop()
+    # It's good practice to set ApplicationName and OrganizationName for Qt settings, etc.
+    QApplication.setApplicationName("Musicova")
+    QApplication.setOrganizationName("MusicovaProject") # Example
+
+    app = QApplication(sys.argv)
+    # Apply a style that might look better cross-platform if default is too basic
+    # app.setStyle("Fusion") # Or "Windows", "GTK+", etc. Fusion is often a good default.
+
+    main_window = MusicovaApp()
+    main_window.show()
+    sys.exit(app.exec_())
