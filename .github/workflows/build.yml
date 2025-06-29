@@ -70,10 +70,12 @@ jobs:
             - **🐧 Linux**: `musicova-linux-${{ github.sha }}` (make executable with `chmod +x`)
             - **🍎 macOS**: 
               - `musicova-macos-${{ github.sha }}.dmg` (disk image for installation)
-              - `musicova-macos-${{ github.sha }}.app` (application bundle)
+              - `musicova-macos-${{ github.sha }}.app.zip` (compressed application bundle)
             
             ### 🚀 How to run:
-            Download the appropriate executable for your operating system and run directly.
+            - **Windows**: Download and run the .exe file directly
+            - **Linux**: Download, make executable (`chmod +x filename`), then run
+            - **macOS**: Download .dmg and drag to Applications, OR download .app.zip, extract, and run
             
             ---
             *Built from Python folder changes • Commit: ${{ github.sha }} • Build: ${{ github.run_id }}*
@@ -151,8 +153,8 @@ jobs:
           asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}
           asset_content_type: application/octet-stream
 
-      # macOS: Create DMG and upload both .app and .dmg
-      - name: Create macOS DMG
+      # macOS: Create DMG and compress .app, then upload both
+      - name: Create macOS packages
         if: matrix.os == 'macos-latest'
         run: |
           # Create a temporary directory for DMG creation
@@ -171,18 +173,21 @@ jobs:
             "musicova.dmg" \
             "dmg_temp/" || \
           hdiutil create -volname "Musicova" -srcfolder dmg_temp -ov -format UDZO musicova.dmg
+          
+          # Compress .app bundle for upload (since GitHub can't upload directories)
+          cd dist && zip -r ../musicova.app.zip musicova.app
         working-directory: ./Python
 
-      - name: Upload macOS App Bundle
+      - name: Upload macOS App Bundle (compressed)
         if: matrix.os == 'macos-latest'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-github-release.outputs.upload_url }}
-          asset_path: ./Python/dist/musicova.app
-          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.app
-          asset_content_type: application/octet-stream
+          asset_path: ./Python/musicova.app.zip
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.app.zip
+          asset_content_type: application/zip
 
       - name: Upload macOS DMG
         if: matrix.os == 'macos-latest'
