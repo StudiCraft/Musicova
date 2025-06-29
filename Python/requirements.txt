@@ -1,0 +1,4 @@
+pygame>=2.0.0
+pillow>=9.0.0 # For image handling, including PNG for icons
+tkfontawesome>=0.1.0 # For using FontAwesome icons in Tkinter
+mutagen>=1.45.0 # For reading audio metadata (track names, album art)
