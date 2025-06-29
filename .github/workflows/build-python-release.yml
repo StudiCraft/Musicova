@@ -85,7 +85,7 @@ jobs:
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.13.5'
 
       - name: Install System Dependencies (CMake and Build Tools for Linux)
         if: matrix.os_runner == 'ubuntu-latest'
@@ -119,7 +119,7 @@ jobs:
 
       - name: Compile Python Script to Executable
         run: |
-          pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
+          pyinstaller --onefile --windowed musicova_python_app.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
         working-directory: ./Python
         continue-on-error: false
 
