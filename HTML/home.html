@@ -17,33 +17,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
-    <!-- Embedded JavaScript for Dark Mode -->
+    <!-- Link to the new ui.js file -->
+    <script src="ui.js" defer></script>
     <script>
-        // This script handles the dark mode toggle functionality.
-        // It checks localStorage for a saved preference and applies it on load.
-        // It also updates the toggle button icon and saves the preference when changed.
+        // Initialize dark mode using the function from ui.js
         document.addEventListener('DOMContentLoaded', function() {
-            // Check for saved dark mode preference in localStorage
-            if (localStorage.getItem('darkMode') === 'enabled') {
-                document.body.classList.add('dark-mode');
-            }
-            const darkModeToggle = document.getElementById('darkModeToggle');
-            const toggleIcon = darkModeToggle.querySelector('.toggle-icon');
-
-            // Event listener for the dark mode toggle button
-            darkModeToggle.addEventListener('click', () => {
-                document.body.classList.toggle('dark-mode'); // Toggle the .dark-mode class on the body
-                const isDarkMode = document.body.classList.contains('dark-mode');
-                // Save the current state to localStorage
-                localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
-                // Update the toggle icon
-                toggleIcon.textContent = isDarkMode ? '☀️' : '🌙';
-            });
-
-            // Set initial icon based on the current dark mode state (e.g., if loaded from localStorage)
-            if (document.body.classList.contains('dark-mode')) {
-                toggleIcon.textContent = '☀️';
-            }
+            initDarkMode('darkModeToggle'); // 'darkModeToggle' is the ID of your button
         });
     </script>
 </head>
