@@ -27,7 +27,7 @@ FA_ICONS = {
 # --- THEME_COLORS Definition (remains, will be used to generate QSS) ---
 THEME_COLORS = {
     "light": {
-        "bg": "blueviolet", "text": "black", "button_bg": "white", "button_text": "blueviolet",
+        "bg": "violet", "text": "black", "button_bg": "white", "button_text": "blueviolet",
         "title_text": "black", "card_bg": "white", "hover_bg": "#f0f0f0", "disabled_bg": "#cccccc",
         "progress_bg": "#e0e0e0", "progress_fill": "blueviolet", "font_family": "DynaPuff", # Ensure this font is available or use a common one
         "font_size_title": 48, "font_size_subtitle": 24, "font_size_button": 14,
