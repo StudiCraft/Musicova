@@ -110,10 +110,6 @@ jobs:
         run: |
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
 
-      - name: Add Homebrew to PATH (macOS) - Redundant if CMake added correctly, but safe
-        if: matrix.os_runner == 'macos-latest'
-        run: echo "/usr/local/bin" >> $GITHUB_PATH
-
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip

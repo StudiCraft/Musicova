@@ -886,7 +886,6 @@ class MusicovaApp(QMainWindow):
             self.handle_track_ended(self.currently_playing_widget)
 
 
-
     def handle_track_ended(self, track_widget):
         if track_widget == self.currently_playing_widget:
             track_widget.stop(self.audio_channel) # Visually reset it
