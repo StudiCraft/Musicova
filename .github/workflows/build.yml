@@ -15,17 +15,38 @@ jobs:
       contents: write # Required to create a GitHub Release (write permissions)
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }} # Output the upload URL for subsequent jobs
-      # The commit_sha and release_tag are now directly passed from the run context for clarity
-      # commit_sha: ${{ steps.commit_sha.outputs.SHA }} # No longer needed as an explicit output if using github.sha
       release_tag: ${{ steps.create_release.outputs.tag_name }} # Output the tag for asset naming
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history for changelog generation
 
-      # Removed 'Get current commit SHA' step as github.sha is directly available.
-      # - name: Get current commit SHA
-      #   id: commit_sha
-      #   run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the last tag if it exists
+          LAST_TAG=$(git tag --sort=-version:refname | head -n1)
+          
+          if [ -z "$LAST_TAG" ]; then
+            # If no previous tag, get all commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" --reverse)
+          else
+            # Get commits since last tag
+            CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%an)")
+          fi
+          
+          # Handle case where no new commits
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- No new commits since last release"
+          fi
+          
+          # Save changelog to output (handle multiline)
+          {
+            echo 'changelog<<EOF'
+            echo "$CHANGELOG"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
@@ -33,35 +54,51 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
         with:
-          # FIX: Changed tag_name to a more reliable unique identifier that is always a valid Git tag format.
-          # We use github.run_id and github.run_attempt to ensure uniqueness for each workflow run.
-          # github.sha gives the full commit SHA, which is also unique for the release name/body.
           tag_name: release-${{ github.run_id }}-${{ github.run_attempt }} # Unique and valid tag for this build
           release_name: Musicova Multi-Platform Build ${{ github.sha }} # Descriptive release name including full SHA
           body: |
-            Automated multi-platform build of musicova.py executable from commit ${{ github.sha }}.
+            ## 🎵 Musicova Multi-Platform Release
+            
+            Automated multi-platform build of musicova.py executable from commit `${{ github.sha }}`.
             This release includes builds for Windows, Linux, and macOS.
+            
+            ### 📝 Changes in this release:
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ### 📦 Downloads:
+            - **🖥️ Windows**: `musicova-windows-${{ github.sha }}.exe`
+            - **🐧 Linux**: `musicova-linux-${{ github.sha }}` (make executable with `chmod +x`)
+            - **🍎 macOS**: 
+              - `musicova-macos-${{ github.sha }}.dmg` (disk image for installation)
+              - `musicova-macos-${{ github.sha }}.app` (application bundle)
+            
+            ### 🚀 How to run:
+            Download the appropriate executable for your operating system and run directly.
+            
             ---
-            **To run:**
-            Download the appropriate executable for your operating system.
-            * For Windows: `musicova-windows-${{ github.sha }}.exe`
-            * For macOS: `musicova-macos-${{ github.sha }}`
-            * For Linux: `musicova-ubuntu-${{ github.sha }}`
-            ---
-            See changes in the Python folder.
+            *Built from Python folder changes • Commit: ${{ github.sha }} • Build: ${{ github.run_id }}*
           draft: false # Set to true if you want to manually publish later
           prerelease: false # Set to true for pre-release builds
 
   # Job 2: Build and upload executables for each OS (runs in parallel)
   build-and-upload:
     # This job depends on the 'create-github-release' job completing successfully.
-    # The 'needs' keyword also makes the outputs of 'create-github-release' available.
     needs: create-github-release
     strategy:
       matrix:
-        # Define the operating systems to build on.
-        # Each OS in this list will run a separate instance of this job.
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            os_name: windows
+            executable_suffix: .exe
+            pyinstaller_name: musicova.exe
+          - os: ubuntu-latest
+            os_name: linux
+            executable_suffix: ""
+            pyinstaller_name: musicova
+          - os: macos-latest
+            os_name: macos
+            executable_suffix: ""
+            pyinstaller_name: musicova.app
     runs-on: ${{ matrix.os }} # Run each build on its respective OS runner
     permissions:
       contents: write # Required to upload assets to the release
@@ -74,36 +111,86 @@ jobs:
         with:
           python-version: '3.x' # Use the latest stable Python 3 version available on the runner
 
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install create-dmg
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          # --- IMPORTANT ---
-          # If your Python script (musicova.py) uses any other third-party libraries,
-          # create a 'requirements.txt' file in your 'Python/' directory like this:
-          # your-library-name==1.0.0
-          # another-library
-          # Then, uncomment the following line:
           pip install -r requirements.txt
         working-directory: ./Python # Ensure pip install runs from the Python directory
 
       - name: Compile Python script to executable
-        run: pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
-        # --onefile: Creates a single executable file.
-        # --windowed: Suppresses the console window (primarily for GUI apps on Windows/macOS).
-        #             For Linux console apps, you might remove this or use --noconsole.
-        #             If your app is GUI, --windowed is generally good.
-        # --add-data: Properly bundles the font file. Ensure 'fonts/DynaPuff-Regular.ttf' path is correct relative to musicova.py.
+        run: pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf${{ matrix.os == 'windows-latest' && ';' || ':' }}fonts"
         working-directory: ./Python # PyInstaller will output build artifacts to ./Python/dist/
 
-      - name: Upload Executable to Release
+      # Windows: Upload .exe directly
+      - name: Upload Windows Executable
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # Get the upload URL from the 'create-github-release' job's output
           upload_url: ${{ needs.create-github-release.outputs.upload_url }}
-          # Dynamically set asset_path and asset_name based on the current OS in the matrix
-          asset_path: ./Python/dist/musicova${{ matrix.os == 'windows-latest' && '.exe' || '' }} # Adds .exe for Windows, no extension for others
-          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}-${{ github.sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-          asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/vnd.microsoft.portable-executable' || 'application/octet-stream' }}
+          asset_path: ./Python/dist/musicova.exe
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.exe
+          asset_content_type: application/vnd.microsoft.portable-executable
+
+      # Linux: Upload executable without extension
+      - name: Upload Linux Executable
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/dist/musicova
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}
+          asset_content_type: application/octet-stream
+
+      # macOS: Create DMG and upload both .app and .dmg
+      - name: Create macOS DMG
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Create a temporary directory for DMG creation
+          mkdir -p dmg_temp
+          cp -r dist/musicova.app dmg_temp/
+          
+          # Create DMG using create-dmg
+          create-dmg \
+            --volname "Musicova" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "musicova.app" 175 120 \
+            --hide-extension "musicova.app" \
+            --app-drop-link 425 120 \
+            "musicova.dmg" \
+            "dmg_temp/" || \
+          hdiutil create -volname "Musicova" -srcfolder dmg_temp -ov -format UDZO musicova.dmg
+        working-directory: ./Python
+
+      - name: Upload macOS App Bundle
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/dist/musicova.app
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.app
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS DMG
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/musicova.dmg
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.dmg
+          asset_content_type: application/x-apple-diskimage
