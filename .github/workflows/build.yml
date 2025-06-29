@@ -1,307 +1,196 @@
-name: Build and Release Musicova
+name: Build Python Executable and Create Multi-Platform Release
 
 on:
   push:
     branches:
-      - main
-      - master
+      - main # Trigger on pushes to the main branch
     paths:
-      - 'Python/**'
+      - 'Python/**' # Only trigger if changes are made within the Python folder
 
 jobs:
-  detect-changes-and-build:
-    name: Detect Changes and Build
-    runs-on: ubuntu-latest
+  # Job 1: Create the GitHub Release (runs only once)
+  create-github-release:
+    runs-on: ubuntu-latest # This job can run on any OS, as it only creates the release
+    permissions:
+      contents: write # Required to create a GitHub Release (write permissions)
     outputs:
-      should_build: ${{ steps.changes.outputs.python }}
-      new_tag: ${{ steps.tag.outputs.new_tag }}
-      commit_hash: ${{ steps.vars.outputs.commit_hash }}
-      commit_message: ${{ steps.vars.outputs.commit_message }}
-      build_date: ${{ steps.vars.outputs.build_date }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }} # Output the upload URL for subsequent jobs
+      release_tag: ${{ steps.create_release.outputs.tag_name }} # Output the tag for asset naming
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-
-      - name: Check for changes in Python directory
-        uses: dorny/paths-filter@v2
-        id: changes
-        with:
-          filters: |
-            python:
-              - 'Python/**'
-
-      - name: Set build variables
-        id: vars
-        if: steps.changes.outputs.python == 'true'
-        run: |
-          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "commit_message=$(git log -1 --pretty=%B | head -1)" >> $GITHUB_OUTPUT
-          echo "build_date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
-
-      - name: Generate and push tag
-        id: tag
-        if: steps.changes.outputs.python == 'true'
-        run: |
-          # Get the latest tag
-          latest_tag=$(git tag -l "v*" --sort=-version:refname | head -n1)
-          if [ -z "$latest_tag" ]; then
-            new_version="v1.0.0"
-          else
-            # Extract version numbers
-            version=${latest_tag#v}
-            IFS='.' read -ra ADDR <<< "$version"
-            major=${ADDR[0]}
-            minor=${ADDR[1]}
-            patch=${ADDR[2]}
-            
-            # Increment patch version
-            patch=$((patch + 1))
-            new_version="v${major}.${minor}.${patch}"
-          fi
-          
-          echo "new_tag=$new_version" >> $GITHUB_OUTPUT
-          
-          # Create and push the tag
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$new_version" -m "Auto-generated release $new_version"
-          git push origin "$new_version"
-
-  build-executables:
-    name: Build on ${{ matrix.os_display_name }}
-    needs: detect-changes-and-build
-    if: needs.detect-changes-and-build.outputs.should_build == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os_runner: windows-latest
-            os_display_name: Windows
-            release_asset_name: 'musicova.exe'
-            pyinstaller_output_name: musicova.exe
-          - os_runner: ubuntu-latest
-            os_display_name: Ubuntu Linux
-            release_asset_name: 'musicova'
-            pyinstaller_output_name: musicova
-          - os_runner: macos-latest
-            os_display_name: macOS
-            release_asset_name_dmg: 'musicova.dmg'
-            release_asset_name_app: 'musicova.app'
-            pyinstaller_output_name: musicova.app
-    runs-on: ${{ matrix.os_runner }}
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install System Dependencies (Linux)
-        if: matrix.os_runner == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential python3-dev \
-            libxcb-cursor0 python3-pyqt5 python3-pyqt5.qtsvg libqt5x11extras5-dev \
-            libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-            libxcb-render-util0 libxcb-shape0 libxkbcommon-x11-0
-
-      - name: Install System Dependencies (macOS)
-        if: matrix.os_runner == 'macos-latest'
-        run: |
-          brew update
-          brew install cmake create-dmg
-
-      - name: Find Python main script
-        id: find_script
-        run: |
-          # Look for common main script names
-          script_candidates=("musicova_python_app.py" "main.py" "app.py" "musicova.py")
-          script_found=""
-          
-          for script in "${script_candidates[@]}"; do
-            if [ -f "Python/$script" ]; then
-              script_found="$script"
-              break
-            fi
-          done
-          
-          if [ -z "$script_found" ]; then
-            # If no common names found, find the first .py file
-            script_found=$(find Python -maxdepth 1 -name "*.py" -type f | head -1 | xargs basename)
-          fi
-          
-          echo "main_script=$script_found" >> $GITHUB_OUTPUT
-          echo "Found main script: $script_found"
-        shell: bash
-
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install wheel setuptools pyinstaller PyQt5
-          if [ -f requirements.txt ]; then
-            pip install --no-build-isolation -r requirements.txt
-          fi
-        shell: bash
-        working-directory: ./Python
-
-      - name: Compile Python Script to Executable (Windows)
-        if: matrix.os_runner == 'windows-latest'
-        run: |
-          pyinstaller --onefile --windowed --name musicova "${{ steps.find_script.outputs.main_script }}" --add-data "fonts/DynaPuff-Regular.ttf;fonts" --add-data "Musicova logo v2.png;." --hidden-import=PyQt5.sip --hidden-import=PyQt5.QtCore --hidden-import=PyQt5.QtGui --hidden-import=PyQt5.QtWidgets --hidden-import=PyQt5.QtSvg --hidden-import=pkg_resources.py2_warn
-        shell: pwsh
-        working-directory: ./Python
-
-      - name: Compile Python Script to Executable (Linux/macOS)
-        if: matrix.os_runner != 'windows-latest'
-        run: |
-          pyinstaller --onefile --windowed --name musicova "${{ steps.find_script.outputs.main_script }}" \
-            --add-data "fonts/DynaPuff-Regular.ttf:fonts" \
-            --add-data "Musicova logo v2.png:." \
-            --hidden-import=PyQt5.sip \
-            --hidden-import=PyQt5.QtCore \
-            --hidden-import=PyQt5.QtGui \
-            --hidden-import=PyQt5.QtWidgets \
-            --hidden-import=PyQt5.QtSvg \
-            --hidden-import=pkg_resources.py2_warn
-        working-directory: ./Python
-
-      - name: Prepare Windows Executable
-        if: matrix.os_runner == 'windows-latest'
-        run: |
-          copy "dist\musicova.exe" "musicova.exe"
-        shell: pwsh
-        working-directory: ./Python
-
-      - name: Prepare Linux Executable
-        if: matrix.os_runner == 'ubuntu-latest'
-        run: |
-          cp dist/musicova musicova
-          chmod +x musicova
-        working-directory: ./Python
-
-      - name: Create macOS DMG and prepare App
-        if: matrix.os_runner == 'macos-latest'
-        run: |
-          # Copy the .app bundle
-          cp -r dist/musicova.app ./
-          
-          # Create DMG
-          mkdir dmg_temp
-          cp -r dist/musicova.app dmg_temp/
-          
-          # Try create-dmg first, fallback to hdiutil if it fails
-          create-dmg --volname "Musicova ${{ needs.detect-changes-and-build.outputs.new_tag }}" \
-            --window-pos 200 120 --window-size 600 400 --icon-size 100 \
-            --icon "musicova.app" 175 120 --hide-extension "musicova.app" \
-            --app-drop-link 425 120 "musicova.dmg" dmg_temp/ || \
-          hdiutil create -volname "Musicova ${{ needs.detect-changes-and-build.outputs.new_tag }}" \
-            -srcfolder dmg_temp -ov -format UDZO "musicova.dmg"
-        working-directory: ./Python
-
-      - name: Upload Windows Executable
-        if: matrix.os_runner == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-executable
-          path: Python/musicova.exe
-
-      - name: Upload Linux Executable
-        if: matrix.os_runner == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-executable
-          path: Python/musicova
-
-      - name: Upload macOS DMG
-        if: matrix.os_runner == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-dmg
-          path: Python/musicova.dmg
-
-      - name: Upload macOS App Bundle
-        if: matrix.os_runner == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-app
-          path: Python/musicova.app
-
-  create-release:
-    name: Create GitHub Release
-    needs: [detect-changes-and-build, build-executables]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts
-
-      - name: List downloaded artifacts
-        run: |
-          find ./artifacts -type f -exec ls -la {} \;
+          fetch-depth: 0 # Fetch full history for changelog generation
 
       - name: Generate changelog
         id: changelog
         run: |
-          # Get commits since last tag
-          last_tag=$(git tag -l "v*" --sort=-version:refname | head -n2 | tail -n1)
-          if [ -z "$last_tag" ]; then
-            changelog="Initial release"
+          # Get the last tag if it exists
+          LAST_TAG=$(git tag --sort=-version:refname | head -n1)
+          
+          if [ -z "$LAST_TAG" ]; then
+            # If no previous tag, get all commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" --reverse)
           else
-            changelog=$(git log --pretty=format:"- %s" ${last_tag}..HEAD | head -10)
+            # Get commits since last tag
+            CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%an)")
           fi
           
-          # Create multiline output
+          # Handle case where no new commits
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- No new commits since last release"
+          fi
+          
+          # Save changelog to output (handle multiline)
           {
             echo 'changelog<<EOF'
-            echo "$changelog"
-            echo EOF
+            echo "$CHANGELOG"
+            echo 'EOF'
           } >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
         with:
-          tag_name: ${{ needs.detect-changes-and-build.outputs.new_tag }}
-          name: "🎵 Musicova ${{ needs.detect-changes-and-build.outputs.new_tag }}"
+          tag_name: release-${{ github.run_id }}-${{ github.run_attempt }} # Unique and valid tag for this build
+          release_name: Musicova Multi-Platform Build ${{ github.sha }} # Descriptive release name including full SHA
           body: |
-            ## 🚀 Musicova Release ${{ needs.detect-changes-and-build.outputs.new_tag }}
+            ## 🎵 Musicova Multi-Platform Release
             
-            ### 📝 What's New
+            Automated multi-platform build of musicova.py executable from commit `${{ github.sha }}`.
+            This release includes builds for Windows, Linux, and macOS.
+            
+            ### 📝 Changes in this release:
             ${{ steps.changelog.outputs.changelog }}
             
-            ### 📦 Downloads
-            - **🖥️ Windows**: Download `musicova.exe` and run directly
-            - **🐧 Linux**: Download `musicova` (executable), make executable (`chmod +x musicova`) and run
+            ### 📦 Downloads:
+            - **🖥️ Windows**: `musicova-windows-${{ github.sha }}.exe`
+            - **🐧 Linux**: `musicova-linux-${{ github.sha }}` (make executable with `chmod +x`)
             - **🍎 macOS**: 
-              - Download `musicova.dmg` for easy installation (mount and drag to Applications)
-              - OR download `musicova.app` bundle directly
+              - `musicova-macos-${{ github.sha }}.dmg` (disk image for installation)
+              - `musicova-macos-${{ github.sha }}.app` (application bundle)
             
-            ### 🔧 System Requirements
-            - Windows 10 or later
-            - Ubuntu 20.04 or later (or equivalent Linux distribution)  
-            - macOS 10.14 or later
-            
-            ### 📊 Build Information
-            - **Build Date**: ${{ needs.detect-changes-and-build.outputs.build_date }}
-            - **Commit**: ${{ needs.detect-changes-and-build.outputs.commit_hash }}
-            - **Commit Message**: "${{ needs.detect-changes-and-build.outputs.commit_message }}"
-            - **Built from**: `Python/` directory changes
+            ### 🚀 How to run:
+            Download the appropriate executable for your operating system and run directly.
             
             ---
-            *This release was automatically generated by GitHub Actions*
-          draft: false
-          prerelease: false
-          files: |
-            artifacts/windows-executable/musicova.exe
-            artifacts/linux-executable/musicova
-            artifacts/macos-dmg/musicova.dmg
-            artifacts/macos-app/musicova.app
+            *Built from Python folder changes • Commit: ${{ github.sha }} • Build: ${{ github.run_id }}*
+          draft: false # Set to true if you want to manually publish later
+          prerelease: false # Set to true for pre-release builds
+
+  # Job 2: Build and upload executables for each OS (runs in parallel)
+  build-and-upload:
+    # This job depends on the 'create-github-release' job completing successfully.
+    needs: create-github-release
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            os_name: windows
+            executable_suffix: .exe
+            pyinstaller_name: musicova.exe
+          - os: ubuntu-latest
+            os_name: linux
+            executable_suffix: ""
+            pyinstaller_name: musicova
+          - os: macos-latest
+            os_name: macos
+            executable_suffix: ""
+            pyinstaller_name: musicova.app
+    runs-on: ${{ matrix.os }} # Run each build on its respective OS runner
+    permissions:
+      contents: write # Required to upload assets to the release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use the latest stable Python 3 version available on the runner
+
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install create-dmg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+        working-directory: ./Python # Ensure pip install runs from the Python directory
+
+      - name: Compile Python script to executable
+        run: pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf${{ matrix.os == 'windows-latest' && ';' || ':' }}fonts"
+        working-directory: ./Python # PyInstaller will output build artifacts to ./Python/dist/
+
+      # Windows: Upload .exe directly
+      - name: Upload Windows Executable
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/dist/musicova.exe
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.exe
+          asset_content_type: application/vnd.microsoft.portable-executable
+
+      # Linux: Upload executable without extension
+      - name: Upload Linux Executable
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/dist/musicova
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}
+          asset_content_type: application/octet-stream
+
+      # macOS: Create DMG and upload both .app and .dmg
+      - name: Create macOS DMG
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Create a temporary directory for DMG creation
+          mkdir -p dmg_temp
+          cp -r dist/musicova.app dmg_temp/
+          
+          # Create DMG using create-dmg
+          create-dmg \
+            --volname "Musicova" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "musicova.app" 175 120 \
+            --hide-extension "musicova.app" \
+            --app-drop-link 425 120 \
+            "musicova.dmg" \
+            "dmg_temp/" || \
+          hdiutil create -volname "Musicova" -srcfolder dmg_temp -ov -format UDZO musicova.dmg
+        working-directory: ./Python
+
+      - name: Upload macOS App Bundle
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/dist/musicova.app
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.app
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS DMG
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
+          asset_path: ./Python/musicova.dmg
+          asset_name: musicova-${{ matrix.os_name }}-${{ github.sha }}.dmg
+          asset_content_type: application/x-apple-diskimage
