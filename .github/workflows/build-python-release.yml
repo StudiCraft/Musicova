@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
-      release_tag: ${{ steps.create_gh_release.outputs.tag_name }}
+      release_tag: ${{ steps.generate_tag_name.outputs.tag_name }} # Propagate the originally generated tag
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
