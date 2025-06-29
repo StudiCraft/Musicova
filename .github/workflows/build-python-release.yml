@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
-      release_tag: ${{ steps.create_gh_release.outputs.tag_name }}
+      release_tag: ${{ steps.generate_tag_name.outputs.tag_name }} # Propagate the originally generated tag
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -24,7 +24,9 @@ jobs:
       - name: Generate Release Tag and Name
         id: generate_tag_name
         run: |
-          RELEASE_TAG="build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          RELEASE_DATE=$(date +'%Y%m%d')
+          RELEASE_TAG="release-${RELEASE_DATE}-${SHORT_SHA}"
           RELEASE_NAME="Musicova Multi-Platform Build ${{ github.sha }}"
           RELEASE_BODY=$(cat <<EOF
             Automated multi-platform build of Musicova (PyQt5 version) executable from commit `${{ github.sha }}`.
@@ -154,6 +156,9 @@ jobs:
           mv "$PYINSTALLER_OUTPUT_PATH" "./Python/dist/$FINAL_ASSET_NAME"
           echo "final_asset_path=./Python/dist/$FINAL_ASSET_NAME" >> $GITHUB_OUTPUT
         continue-on-error: false
+
+      - name: DEBUG - Show received tag
+        run: echo "Received tag for upload: ${{ needs.create-release.outputs.release_tag }}"
 
       - name: Upload Executable to GitHub Release
         uses: softprops/action-gh-release@v2
