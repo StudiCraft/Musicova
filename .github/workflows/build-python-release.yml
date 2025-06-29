@@ -27,7 +27,7 @@ jobs:
           RELEASE_TAG="build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
           RELEASE_NAME="Musicova Multi-Platform Build ${{ github.sha }}"
           RELEASE_BODY=$(cat <<EOF
-            Automated multi-platform build of `musicova.py` executable from commit `${{ github.sha }}`.
+            Automated multi-platform build of Musicova (PyQt5 version) executable from commit `${{ github.sha }}`.
 
             This release includes builds for Windows, Linux, and macOS.
             ---
@@ -69,82 +69,86 @@ jobs:
             os_display_name: Windows
             executable_suffix: '.exe'
             release_asset_name_os_part: windows
+            pyinstaller_output_name: musicova.exe
           - os_runner: ubuntu-latest
             os_display_name: Ubuntu Linux
             executable_suffix: ''
             release_asset_name_os_part: ubuntu
+            pyinstaller_output_name: musicova
           - os_runner: macos-latest
             os_display_name: macOS
             executable_suffix: ''
             release_asset_name_os_part: macos
+            pyinstaller_output_name: musicova
     runs-on: ${{ matrix.os_runner }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.11 # Using 3.11 for broader PyQt5 compatibility via pip
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13.5'
+          python-version: '3.11'
 
-      - name: Install System Dependencies (CMake and Build Tools for Linux)
+      - name: Install System Dependencies (Linux - PyQt5 and build tools)
         if: matrix.os_runner == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential python3-dev
-          sudo apt-get install python3-tk
-
-      # --- macOS fix start ---
-      - name: Update Homebrew (macOS)
-        if: matrix.os_runner == 'macos-latest'
-        run: brew update
+          sudo apt-get install -y cmake build-essential python3-dev \
+            libxcb-cursor0 python3-pyqt5 python3-pyqt5.qtsvg libqt5x11extras5-dev \
+            libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-shape0 libxkbcommon-x11-0
 
       - name: Install System Dependencies (CMake for macOS)
         if: matrix.os_runner == 'macos-latest'
-        run: brew install cmake
-        continue-on-error: false
+        run: |
+          brew update
+          brew install cmake
 
       - name: Ensure CMake is on PATH (macOS)
         if: matrix.os_runner == 'macos-latest'
         run: |
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
 
-      - name: Install TKinter (macOS)
-        if: matrix.os_runner == 'macos-latest'
-        run: brew install python-tk
-        continue-on-error: false
-
-      - name: Add Homebrew to PATH (macOS)
-        if: matrix.os_runner == 'macos-latest'
-        run: echo "/usr/local/bin" >> $GITHUB_PATH
-      # --- macOS fix end ---
-
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install wheel setuptools
           pip install pyinstaller
+          # Attempt to install PyQt5 via pip first for all OS for consistency
+          # For Linux, system python3-pyqt5 is a fallback if pip version has issues with system libs
+          pip install PyQt5 # This will be used by PyInstaller
           pip install --no-build-isolation -r requirements.txt
         working-directory: ./Python
         continue-on-error: false
 
       - name: Compile Python Script to Executable
         run: |
-          pyinstaller --onefile --windowed musicova_python_app.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
+          pyinstaller --onefile --windowed --name musicova musicova_python_app.py \
+            --add-data "fonts/DynaPuff-Regular.ttf:fonts" \
+            --add-data "Musicova logo v2.png:." \
+            --hidden-import=PyQt5.sip \
+            --hidden-import=PyQt5.QtCore \
+            --hidden-import=PyQt5.QtGui \
+            --hidden-import=PyQt5.QtWidgets \
+            --hidden-import=PyQt5.QtSvg \
+            --hidden-import=pkg_resources.py2_warn # Often needed for PyInstaller stability
         working-directory: ./Python
         continue-on-error: false
 
       - name: Set Executable Permissions (Linux/macOS)
         if: matrix.os_runner == 'ubuntu-latest' || matrix.os_runner == 'macos-latest'
-        run: chmod +x ./Python/dist/musicova
+        run: chmod +x ./Python/dist/${{ matrix.pyinstaller_output_name }}
 
       - name: Rename Executable for Release Asset Naming
         id: rename_executable
         run: |
           FINAL_ASSET_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}${{ matrix.executable_suffix }}"
-          PYINSTALLER_OUTPUT_PATH=$(find ./Python/dist -maxdepth 1 -type f -name "musicova*" -print -quit)
-          if [ -z "$PYINSTALLER_OUTPUT_PATH" ]; then
-            echo "Error: PyInstaller executable not found in ./Python/dist."
+          PYINSTALLER_OUTPUT_PATH="./Python/dist/${{ matrix.pyinstaller_output_name }}"
+
+          if [ ! -f "$PYINSTALLER_OUTPUT_PATH" ]; then
+            echo "Error: PyInstaller executable not found at $PYINSTALLER_OUTPUT_PATH."
+            ls -lha ./Python/dist/ # List directory contents for debugging
             exit 1
           fi
           mv "$PYINSTALLER_OUTPUT_PATH" "./Python/dist/$FINAL_ASSET_NAME"
