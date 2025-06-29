@@ -11,9 +11,18 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QLabel,
                              QVBoxLayout, QWidget, QFileDialog, QComboBox,
                              QScrollArea, QHBoxLayout, QSlider, QGridLayout)
 from PyQt5.QtCore import Qt, QUrl, QSettings
-from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtGui import QIcon, QPixmap, QTransform, QFontDatabase # Added QFontDatabase
 from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+
+# Icon Paths (assuming icons are in 'Python/Icons/' relative to this script)
+# IMPORTANT: These icons need to be copied from HTML/Icons to Python/Icons for this to work.
+ICONS_DIR = os.path.join(os.path.dirname(__file__), 'Icons')
+PLAY_ICON_PATH = os.path.join(ICONS_DIR, 'r5qa5pfzfndm7bro859.svg')
+PAUSE_ICON_PATH = os.path.join(ICONS_DIR, '5dd3gw6mlhjm7brpg84.svg')
+PREV_ICON_PATH = os.path.join(ICONS_DIR, '10b81wv7wlmm7brpwyt.svg')
+# NEXT_ICON_PATH uses PREV_ICON_PATH and is transformed in code.
+# Other icons (trash, moon, sun) will remain text-based for now.
 
 class MusicovaApp(QMainWindow):
     """
@@ -50,17 +59,8 @@ class MusicovaApp(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        # Note: Scroll area for playlist was created but not added to the main window layout.
-        # This might be intentional if it's used elsewhere or a remnant.
-        scroll_area = QScrollArea() # Unused in this context
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setMinimumHeight(200)
-        self.playlist_widget = QWidget() # Unused in this context
-        self.playlist_layout = QVBoxLayout(self.playlist_widget) # Unused in this context
-        scroll_area.setWidget(self.playlist_widget) # Unused in this context
-
         # Media player instance for the main window (potentially for previews or other features)
-        self.media_player = QMediaPlayer() # This player is not directly used for playback in the main screen.
+        # self.media_player = QMediaPlayer() # This player is not directly used for playback in the main screen. Removed as unused.
         layout.setAlignment(Qt.AlignCenter)
 
         # Load and display logo
@@ -167,12 +167,13 @@ class MusicovaApp(QMainWindow):
                         border: none;
                         border-radius: 25px;
                         padding: 15px 30px;
-                        font-family: 'DynaPuff', sans-serif;
+                        font-family: 'DynaPuff';
                         font-size: 18px; /* Close to 1.2rem */
                         font-weight: bold; /* Close to 600 */
                     }
                     QPushButton:hover {
                         background-color: #4a4a4a; /* Slightly lighter hover for dark mode */
+                        transform: translateY(-2px); /* Mimic web hover */
                     }
                 """)
         else:
@@ -202,12 +203,13 @@ class MusicovaApp(QMainWindow):
                         border: none;
                         border-radius: 25px;
                         padding: 15px 30px;
-                        font-family: 'DynaPuff', sans-serif;
+                        font-family: 'DynaPuff';
                         font-size: 18px;
                         font-weight: bold;
                     }
                     QPushButton:hover {
                         background-color: #f0f0f0; /* --hover-bg light (example from CSS) */
+                        transform: translateY(-2px); /* Mimic web hover */
                     }
                 """)
 
@@ -217,7 +219,8 @@ class PlayerWindow(QMainWindow):
 
     Handles playlist management, audio playback, UI for player controls,
     and theme synchronization with the main MusicovaApp. It displays imported
-    music tracks as cards and provides individual playback controls for each.
+    music tracks as interactive cards, each with individual playback controls,
+    progress bar, and volume slider.
     """
     def __init__(self, parent=None):
         """
@@ -259,19 +262,8 @@ class PlayerWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        # Note: The following scroll_area and its widgets (playlist_widget, playlist_layout)
-        # are created but not added to the PlayerWindow's layout. They seem to be unused.
-        # This might be a leftover from a previous design or an incomplete feature.
-        scroll_area = QScrollArea() # Unused in this context
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setMinimumHeight(200)
-        self.playlist_widget = QWidget() # Unused in this context
-        self.playlist_layout = QVBoxLayout(self.playlist_widget) # Unused in this context
-        scroll_area.setWidget(self.playlist_widget) # Unused in this context
-
-        # This QMediaPlayer instance is created but not directly used for playback.
-        # Playback is handled by individual QMediaPlayer instances created per track card.
-        self.media_player = QMediaPlayer() # General media player, not for specific tracks here.
+        # Unused QMediaPlayer instance removed. Playback is per-card.
+        # self.media_player = QMediaPlayer()
 
         # Add title label for the player window
         self.title_label = QLabel('Musicova Player')
@@ -297,6 +289,13 @@ class PlayerWindow(QMainWindow):
         self.import_button.setFixedWidth(100)
         self.import_button.clicked.connect(self.import_files) # Connect to import_files method
         import_layout.addWidget(self.import_button)
+
+        # Add Clear Playlist button
+        self.clear_playlist_button = QPushButton('Clear Playlist')
+        self.clear_playlist_button.setObjectName("clear_playlist_button_player") # For styling
+        self.clear_playlist_button.setFixedWidth(150) # Adjust width as needed
+        self.clear_playlist_button.clicked.connect(self.clear_playlist) # Connect to clear_playlist method
+        import_layout.addWidget(self.clear_playlist_button)
 
         layout.addWidget(self.import_container) # Add import controls to the main layout
 
@@ -407,16 +406,19 @@ class PlayerWindow(QMainWindow):
         """
         Adds an individual audio file to the playlist and creates its UI card.
 
+        The card includes:
+        - Album art placeholder.
+        - Track name.
+        - Time display (current/total).
+        - Progress slider.
+        - Play/Pause, Previous, Next, and Remove buttons.
+        - Volume slider.
+
+        A new QMediaPlayer instance is created for this track and all UI elements
+        are connected to appropriate signals/slots. The card is added to a grid layout.
+
         Args:
             file_path (str): The absolute path to the audio file.
-
-        Normalizes the file path, appends it to the internal playlist.
-        Creates a player card (QWidget) with album art placeholder, track name,
-        progress slider, time labels, and a play/pause button.
-        A new QMediaPlayer instance is created for this specific track.
-        Signals for media player events (duration changed, position changed)
-        and UI interactions (slider moved, button clicked) are connected.
-        The card is then added to the grid layout.
         """
         # Normalize file path to use forward slashes consistently for internal use
         file_path = file_path.replace('\\', '/')
@@ -449,7 +451,8 @@ class PlayerWindow(QMainWindow):
         # Add track name label
         track_name = os.path.basename(file_path) # Display only the file name
         track_label = QLabel(track_name)
-        track_label.setStyleSheet('color: white; font-weight: bold; font-size: 14px;') # Style for track name
+        track_label.setObjectName("track_label_card") # Set object name for QSS
+        # track_label.setStyleSheet('color: white; font-weight: bold; font-size: 14px;') # Style now handled by QSS
         track_label.setAlignment(Qt.AlignCenter)
         track_label.setWordWrap(True) # Wrap text if name is too long
         card_layout.addWidget(track_label)
@@ -459,31 +462,14 @@ class PlayerWindow(QMainWindow):
         progress_layout = QHBoxLayout(progress_container) # Horizontal layout for time_current | slider | time_total
         
         time_current = QLabel('0:00') # Label for current playback time
-        time_current.setStyleSheet('color: white;')
+        time_current.setObjectName("time_label_card") # Set object name for QSS
+        # time_current.setStyleSheet('color: white;') # Style now handled by QSS
         progress_slider = QSlider(Qt.Horizontal) # Slider for track progress
-        # Default slider style (can be overridden by theme)
-        progress_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #333333;
-                height: 4px;
-                border-radius: 2px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #7000a3; /* Played part color */
-                height: 4px;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #666666;
-                width: 12px;
-                height: 12px;
-                margin: -4px 0; /* Adjust handle position */
-                border-radius: 6px;
-            }
-        """)
+        # Styling for progress_slider is now handled globally in apply_theme by QSlider::groove:horizontal etc.
         
         time_total = QLabel('0:00') # Label for total track duration
-        time_total.setStyleSheet('color: white;')
+        time_total.setObjectName("time_label_card") # Set object name for QSS
+        # time_total.setStyleSheet('color: white;') # Style now handled by QSS
         
         progress_layout.addWidget(time_current)
         progress_layout.addWidget(progress_slider)
@@ -494,36 +480,56 @@ class PlayerWindow(QMainWindow):
         # Add playback controls (Play/Pause button)
         controls_container = QWidget() # Container for control buttons
         controls_layout = QHBoxLayout(controls_container) # Horizontal layout for buttons
-        controls_layout.setSpacing(20)
+        controls_layout.setSpacing(10) # Reduced spacing for more buttons
         
-        play_button = QPushButton('▶') # Play button, icon changes to ⏸ when playing
-        play_button.setFixedSize(50, 50) # Fixed size for a circular appearance with border-radius
-        # Default play button style (can be overridden by theme)
-        play_button.setStyleSheet("""
-            QPushButton {
-                background-color: blueviolet;
-                color: white;
-                border-radius: 25px; /* Half of width/height for circle */
-                font-size: 20px;
-            }
-            QPushButton:hover {
-                background-color: #8a2be2; /* Slightly different color on hover */
-            }
-        """)
+        # Define icon paths (ideally at module level or class level)
+        # For this change, defining them locally for clarity of what's being used.
+        # Assume ICONS_DIR is defined appropriately earlier, e.g., os.path.join(os.path.dirname(__file__), 'Icons')
+        # For the purpose of this diff, I'll hardcode the string for now.
+        # Later, I'll add the ICONS_DIR definition.
+        play_icon_path = os.path.join(os.path.dirname(__file__), 'Icons', 'r5qa5pfzfndm7bro859.svg')
+        # pause_icon_path = os.path.join(os.path.dirname(__file__), 'Icons', '5dd3gw6mlhjm7brpg84.svg') # Used in play_pause
+        prev_icon_path = os.path.join(os.path.dirname(__file__), 'Icons', '10b81wv7wlmm7brpwyt.svg')
+        # For Next icon, we need to flip prev_icon. QPixmap can do this.
         
+        prev_button_card = QPushButton()
+        prev_button_card.setObjectName("prev_button_card")
+        prev_button_card.setIcon(QIcon(PREV_ICON_PATH)) # Use global path
+        prev_button_card.setIconSize(prev_button_card.sizeHint() / 1.5)
+        prev_button_card.setFixedSize(40, 40)
+        # prev_button_card.setStyleSheet("...") # Styling moved to apply_theme
+
+        play_button = QPushButton()
+        play_button.setObjectName("play_button_card")
+        play_button.setIcon(QIcon(PLAY_ICON_PATH)) # Use global path
+        play_button.setIconSize(play_button.sizeHint())
+        play_button.setFixedSize(50, 50)
+        # play_button.setStyleSheet("...") # Styling moved to apply_theme
+
+        next_button_card = QPushButton()
+        next_button_card.setObjectName("next_button_card")
+        next_pixmap = QPixmap(PREV_ICON_PATH) # Use global path
+        mirrored_next_pixmap = next_pixmap.transformed(QTransform().scale(-1, 1))
+        next_button_card.setIcon(QIcon(mirrored_next_pixmap))
+        next_button_card.setIconSize(next_button_card.sizeHint() / 1.5)
+        next_button_card.setFixedSize(40, 40)
+        # next_button_card.setStyleSheet("...") # Styling moved to apply_theme
+
         # Create a dedicated QMediaPlayer for this track
         media_player = QMediaPlayer()
         content = QMediaContent(QUrl.fromLocalFile(file_path)) # Create QMediaContent from file path
         media_player.setMedia(content) # Set the media for this player instance
         
         # Store the player and its associated UI controls in the track_players dictionary
-        self.track_players[file_path] = {
+        # Ensure prev_button_card and next_button_card are included from above
+        self.track_players[file_path].update({
             'player': media_player,
             'progress': progress_slider,
             'time_current': time_current,
             'time_total': time_total,
-            'play_button': play_button
-        }
+            'play_button': play_button,
+            'card_widget': player_card
+        })
         
         # Connect signals from the media player and UI controls to appropriate methods
         # Use lambdas to pass file_path to handlers, identifying which track's controls/player to update
@@ -533,14 +539,62 @@ class PlayerWindow(QMainWindow):
         progress_slider.sliderReleased.connect(lambda fp=file_path: self.on_slider_released(fp))
         progress_slider.valueChanged.connect(lambda value, fp=file_path: self.on_slider_value_changed(value, fp))
         play_button.clicked.connect(lambda fp=file_path: self.play_pause(fp))
+        prev_button_card.clicked.connect(lambda _, fp=file_path: self.play_adjacent_track(fp, direction=-1))
+        next_button_card.clicked.connect(lambda _, fp=file_path: self.play_adjacent_track(fp, direction=1))
         
-        # Center the play button within its container
-        controls_layout.addStretch()
+        # Add buttons to controls layout
+        controls_layout.addStretch(1)
+        controls_layout.addWidget(prev_button_card)
         controls_layout.addWidget(play_button)
-        controls_layout.addStretch()
+        controls_layout.addWidget(next_button_card)
+        controls_layout.addStretch(1)
         
         card_layout.addWidget(controls_container) # Add controls container to card
+
+        # Add Volume Slider
+        volume_slider = QSlider(Qt.Horizontal)
+        volume_slider.setObjectName("volume_slider_card") # Set object name for QSS
+        volume_slider.setRange(0, 100) # QMediaPlayer volume is 0-100
+        volume_slider.setValue(100)    # Default volume 100%
+        # volume_slider.setStyleSheet(""" # Styling moved to apply_theme
+            #QSlider::groove:horizontal {
+                #background: #555555; /* Darker groove for visibility */
+                height: 8px;
+                border-radius: 4px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #8a2be2; /* Theme color for played part */
+                height: 8px;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #cccccc; /* Light handle for visibility */
+                width: 16px;
+                height: 16px;
+                margin: -4px 0; /* Center handle on groove */
+                border-radius: 8px;
+            }
+        """)
+        card_layout.addWidget(volume_slider)
+
+        # Store volume slider in track_players for access
+        self.track_players[file_path]['volume_slider'] = volume_slider
         
+        # Connect volume slider to media player's volume
+        volume_slider.valueChanged.connect(lambda value, p=media_player: p.setVolume(value))
+
+        # Add Remove Button to card
+        remove_button = QPushButton('🗑️') # Using an emoji for simplicity
+        remove_button.setObjectName("remove_button_card")
+        remove_button.setFixedSize(30, 30) # Small button
+        # remove_button.setStyleSheet("...") # Styling moved to apply_theme
+        # remove_button.clicked.connect(lambda checked, fp=file_path, card_widget=player_card: self.remove_track(fp, card_widget))
+        # The above lambda captures player_card at the time of connection.
+        # It's better to find the card dynamically or ensure the card itself is passed correctly.
+        # For now, let's connect it and refine `remove_track` to handle finding the card if needed, or ensure `player_card` is the correct reference.
+        remove_button.clicked.connect(lambda _, fp=file_path: self.remove_track(fp))
+        card_layout.addWidget(remove_button, alignment=Qt.AlignRight) # Add to card layout
+
         # Add the fully constructed player card to the grid layout
         self.cards_layout.addWidget(player_card, self.current_row, self.current_col)
         self.current_col += 1
@@ -584,22 +638,23 @@ class PlayerWindow(QMainWindow):
                     border: none;
                     border-radius: 25px;
                     padding: 15px 30px;
-                    font-family: 'DynaPuff', sans-serif;
-                    font-size: 18px;
-                    font-weight: bold;
+                    font-family: 'DynaPuff';
+                    font-size: 18px; /* Matches .musicova-title button, .file-select */
+                    font-weight: 600; /* Matches .musicova-title button, .file-select */
                 }
                 QPushButton:hover {
-                    background-color: #3d3d3d;
-                    transform: translateY(-2px);
+                    background-color: #4a4a4a; /* Darker hover consistent with MusicovaApp */
+                    /* transform: translateY(-2px); QSS doesn't support transform directly */
                 }
                 QComboBox {
                     background-color: #3d3d3d;
                     color: white;
                     border: none;
                     border-radius: 25px;
-                    padding: 15px 30px;
-                    font-family: 'DynaPuff', sans-serif;
-                    font-size: 18px;
+                    padding: 15px 30px; /* Matches .file-select */
+                    font-family: 'DynaPuff';
+                    font-size: 18px; /* Matches .file-select */
+                    font-weight: 600; /* Matches .file-select */
                 }
                 QComboBox QAbstractItemView {
                     background-color: #2d2d2d;
@@ -638,19 +693,76 @@ class PlayerWindow(QMainWindow):
                     border-radius: 6px;
                 }
                 QSlider::sub-page:horizontal {
-                    background: #8a2be2;
+                    background: #8a2be2; /* --progress-fill dark */
                     border-radius: 2px;
                 }
+                /* Style for Volume QSlider */
+                QSlider[objectName="volume_slider_card"]::groove:horizontal {
+                    background: #404040; /* --progress-bg dark */
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                QSlider[objectName="volume_slider_card"]::handle:horizontal {
+                    background: #8a2be2; /* --progress-fill dark */
+                    width: 16px;
+                    height: 16px;
+                    margin: -4px 0;
+                    border-radius: 8px;
+                }
+                QSlider[objectName="volume_slider_card"]::sub-page:horizontal {
+                    background: #8a2be2; /* --progress-fill dark */
+                    border-radius: 4px;
+                }
+
                 QWidget#player_card {
-                    background-color: #2d2d2d;
+                    background-color: #2d2d2d; /* --card-bg dark */
                     border-radius: 15px;
                     padding: 20px;
+                    /* box-shadow not directly supported well in QSS for all platforms */
                 }
+                /* General QLabel color for the window */
                 QLabel {
-                    color: white;
+                    color: white; /* --text-color dark */
                 }
-                QWidget#player_card QLabel {
+                /* Specific labels within player cards */
+                QWidget#player_card QLabel[objectName="track_label_card"] {
+                    color: white; /* --text-color dark */
+                    font-family: 'DynaPuff';
+                    font-size: 18px; /* Approx 1.4rem, adjust as needed */
+                    font-weight: 600;
+                }
+                QWidget#player_card QLabel[objectName="time_label_card"] {
+                    color: #cccccc; /* Lighter grey for time, similar to web's #666 on dark */
+                    font-size: 12px; /* Approx 0.9rem */
+                }
+                QWidget#player_card[active="true"] {
+                    border: 2px solid #8a2be2; /* --progress-fill dark */
+                }
+                /* Card Control Buttons - Dark Mode */
+                QWidget#player_card QPushButton[objectName="play_button_card"] {
+                    background-color: #8a2be2; /* Theme accent */
+                    border-radius: 25px; /* For 50x50 button */
+                }
+                QWidget#player_card QPushButton[objectName="play_button_card"]:hover {
+                    background-color: #9932cc; /* Darker accent */
+                }
+                QWidget#player_card QPushButton[objectName="prev_button_card"],
+                QWidget#player_card QPushButton[objectName="next_button_card"] {
+                    background-color: #4a4a4a; /* Darker grey */
+                    border-radius: 20px; /* For 40x40 button */
+                }
+                QWidget#player_card QPushButton[objectName="prev_button_card"]:hover,
+                QWidget#player_card QPushButton[objectName="next_button_card"]:hover {
+                    background-color: #5a5a5a;
+                }
+                QWidget#player_card QPushButton[objectName="remove_button_card"] {
+                    background-color: #5a2d2d; /* Dark redish */
                     color: white;
+                    font-size: 15px;
+                    border-radius: 15px; /* For 30x30 button */
+                }
+                QWidget#player_card QPushButton[objectName="remove_button_card"]:hover {
+                    background-color: #7a3d3d;
                 }
             """)
             self.theme_button.setText('☀️')
@@ -730,6 +842,17 @@ class PlayerWindow(QMainWindow):
                     background-color: #4a4a4a; /* Consistent hover */
                 }
             """)
+            # Style for clear_playlist_button (dark mode)
+            self.clear_playlist_button.setStyleSheet(import_button_style + """
+                QPushButton {
+                    background-color: #3d3d3d;
+                    color: #ffffff;
+                    margin-left: 10px; /* Add some space from the import button */
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                }
+            """)
         else:
             self.setStyleSheet("""
                 QMainWindow, QWidget {
@@ -742,22 +865,23 @@ class PlayerWindow(QMainWindow):
                     border: none;
                     border-radius: 25px;
                     padding: 15px 30px;
-                    font-family: 'DynaPuff', sans-serif;
-                    font-size: 18px;
-                    font-weight: bold;
+                    font-family: 'DynaPuff';
+                    font-size: 18px; /* Matches .musicova-title button, .file-select */
+                    font-weight: 600; /* Matches .musicova-title button, .file-select */
                 }
                 QPushButton:hover {
-                    background-color: #f0f0f0;
-                    transform: translateY(-2px);
+                    background-color: #f0f0f0; /* --hover-bg light */
+                    /* transform: translateY(-2px); QSS doesn't support transform */
                 }
                 QComboBox {
                     background-color: white;
                     color: blueviolet;
                     border: none;
                     border-radius: 25px;
-                    padding: 15px 30px;
-                    font-family: 'DynaPuff', sans-serif;
-                    font-size: 18px;
+                    padding: 15px 30px; /* Matches .file-select */
+                    font-family: 'DynaPuff';
+                    font-size: 18px; /* Matches .file-select */
+                    font-weight: 600; /* Matches .file-select */
                 }
                 QComboBox QAbstractItemView {
                     background-color: white;
@@ -796,19 +920,73 @@ class PlayerWindow(QMainWindow):
                     border-radius: 6px;
                 }
                 QSlider::sub-page:horizontal {
-                    background: blueviolet;
+                    background: blueviolet; /* --progress-fill light */
                     border-radius: 2px;
                 }
+                /* Style for Volume QSlider */
+                QSlider[objectName="volume_slider_card"]::groove:horizontal {
+                    background: #e0e0e0; /* --progress-bg light */
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                QSlider[objectName="volume_slider_card"]::handle:horizontal {
+                    background: blueviolet; /* --progress-fill light */
+                    width: 16px;
+                    height: 16px;
+                    margin: -4px 0;
+                    border-radius: 8px;
+                }
+                QSlider[objectName="volume_slider_card"]::sub-page:horizontal {
+                    background: blueviolet; /* --progress-fill light */
+                    border-radius: 4px;
+                }
+
                 QWidget#player_card {
-                    background-color: white;
+                    background-color: white; /* --card-bg light */
                     border-radius: 15px;
                     padding: 20px;
                 }
                 QLabel {
-                    color: black;
+                    color: black; /* --text-color light */
                 }
-                QWidget#player_card QLabel {
-                    color: black;
+                QWidget#player_card QLabel[objectName="track_label_card"] {
+                    color: black; /* --text-color light */
+                    font-family: 'DynaPuff';
+                    font-size: 18px;
+                    font-weight: 600;
+                }
+                QWidget#player_card QLabel[objectName="time_label_card"] {
+                    color: #333333; /* Darker grey for time, similar to web's #666 on light */
+                    font-size: 12px;
+                }
+                QWidget#player_card[active="true"] {
+                    border: 2px solid blueviolet; /* --progress-fill light */
+                }
+                /* Card Control Buttons - Light Mode */
+                QWidget#player_card QPushButton[objectName="play_button_card"] {
+                    background-color: blueviolet;
+                    border-radius: 25px;
+                }
+                QWidget#player_card QPushButton[objectName="play_button_card"]:hover {
+                    background-color: #9370DB; /* Lighter purple */
+                }
+                QWidget#player_card QPushButton[objectName="prev_button_card"],
+                QWidget#player_card QPushButton[objectName="next_button_card"] {
+                    background-color: #e0e0e0; /* Light grey */
+                    border-radius: 20px;
+                }
+                QWidget#player_card QPushButton[objectName="prev_button_card"]:hover,
+                QWidget#player_card QPushButton[objectName="next_button_card"]:hover {
+                    background-color: #d0d0d0;
+                }
+                QWidget#player_card QPushButton[objectName="remove_button_card"] {
+                    background-color: #ff7f7f; /* Light red */
+                    color: white;
+                    font-size: 15px;
+                    border-radius: 15px;
+                }
+                QWidget#player_card QPushButton[objectName="remove_button_card"]:hover {
+                    background-color: #ff6347; /* Tomato */
                 }
             """)
             self.theme_button.setText('🌙')
@@ -886,6 +1064,17 @@ class PlayerWindow(QMainWindow):
                 }
                 QPushButton:hover {
                     background-color: #f0f0f0; /* --hover-bg light (example from CSS) */
+                }
+            """)
+            # Style for clear_playlist_button (light mode)
+            self.clear_playlist_button.setStyleSheet(import_button_style + """
+                QPushButton {
+                    background-color: white;
+                    color: blueviolet;
+                    margin-left: 10px; /* Add some space from the import button */
+                }
+                QPushButton:hover {
+                    background-color: #f0f0f0;
                 }
             """)
 
@@ -1025,13 +1214,142 @@ class PlayerWindow(QMainWindow):
         controls = self.track_players[file_path]
         player = controls['player']
         play_button = controls['play_button']
-        
+        player_card_widget = play_button.parentWidget().parentWidget() # Access the player_card QWidget
+
         if player.state() == QMediaPlayer.PlayingState:
             player.pause()
             play_button.setText('▶') # Change icon to 'Play'
+            player_card_widget.setProperty('active', False)
+            self.style().unpolish(player_card_widget); self.style().polish(player_card_widget) # Refresh style
         else:
+            # Pause other players and deactivate their cards
+            for fp, other_controls in self.track_players.items():
+                if fp != file_path and other_controls['player'].state() == QMediaPlayer.PlayingState:
+                    other_controls['player'].pause()
+                    other_controls['play_button'].setText('▶')
+                    other_card_widget = other_controls['play_button'].parentWidget().parentWidget()
+                    other_card_widget.setProperty('active', False)
+                    self.style().unpolish(other_card_widget); self.style().polish(other_card_widget)
+
             player.play()
             play_button.setText('⏸') # Change icon to 'Pause'
+            player_card_widget.setProperty('active', True)
+            self.style().unpolish(player_card_widget); self.style().polish(player_card_widget) # Refresh style
+
+    def remove_track(self, file_path):
+        """
+        Removes a track from the playlist and its UI card.
+
+        Args:
+            file_path (str): The path of the track to remove.
+        """
+        if file_path not in self.track_players:
+            print(f"Track {file_path} not found in track_players.")
+            return
+
+        controls = self.track_players[file_path]
+        player = controls['player']
+
+        # Stop the player and release resources
+        player.stop()
+        player.setMedia(QMediaContent()) # Clear media content
+
+        # Find the card widget to remove it from the layout
+        # This requires iterating through the layout items or having a direct reference.
+        # A more robust way is to store the card widget in self.track_players too.
+        # For now, assuming self.track_players[file_path]['play_button'] exists and we can get parent widgets
+
+        card_widget_to_remove = None
+        # Iterate over cards_layout to find the widget associated with file_path
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            if item and item.widget():
+                # This is a bit indirect. We need a reliable way to map file_path to its card widget.
+                # Let's assume the 'play_button' is a good enough proxy to find its card.
+                # This assumes the play_button is a direct child of a container, which is a child of the card.
+                # Or, more simply, if we store the card_widget reference when creating it.
+                # Let's modify add_to_playlist to store the card_widget.
+                if 'card_widget' in controls and controls['card_widget'] == item.widget():
+                     card_widget_to_remove = item.widget()
+                     break
+
+        if card_widget_to_remove:
+            self.cards_layout.removeWidget(card_widget_to_remove)
+            card_widget_to_remove.deleteLater() # Schedule the card widget for deletion
+        else:
+            print(f"Could not find card widget for {file_path} to remove from layout.")
+
+
+        # Remove from internal data structures
+        del self.track_players[file_path] # Remove entry from dict first
+        player.deleteLater() # Now schedule the player object for deletion
+
+        if file_path in self.playlist:
+            self.playlist.remove(file_path)
+
+        # Note: This doesn't currently re-flow the grid layout.
+        # If that's desired, the items would need to be re-added or the layout managed differently.
+        # For simplicity, removing leaves a gap. A QFlowLayout might handle this better if desired later.
+
+        self.update_import_controls_visibility() # Update visibility if playlist becomes empty
+
+    def play_adjacent_track(self, current_file_path, direction):
+        """
+        Plays the next or previous track in the playlist relative to the current track.
+
+        Args:
+            current_file_path (str): The file path of the currently reference track.
+            direction (int): 1 for next track, -1 for previous track.
+        """
+        if not self.playlist:
+            return
+
+        try:
+            current_index = self.playlist.index(current_file_path)
+        except ValueError:
+            print(f"Error: Current track {current_file_path} not found in playlist.")
+            return
+
+        # Stop and reset current track (if it's playing and its card exists)
+        if current_file_path in self.track_players:
+            current_controls = self.track_players[current_file_path]
+            current_player = current_controls['player']
+            if current_player.state() == QMediaPlayer.PlayingState:
+                current_player.pause() # Pause instead of stop to potentially resume if user clicks back quickly
+            current_player.setPosition(0) # Reset position
+            current_controls['play_button'].setText('▶')
+            current_card_widget = current_controls.get('card_widget')
+            if current_card_widget:
+                current_card_widget.setProperty('active', False)
+                self.style().unpolish(current_card_widget); self.style().polish(current_card_widget)
+
+
+        target_index = current_index + direction
+
+        if 0 <= target_index < len(self.playlist):
+            next_file_path = self.playlist[target_index]
+            if next_file_path in self.track_players:
+                # Call play_pause for the target track to handle playing and UI updates
+                self.play_pause(next_file_path)
+            else:
+                print(f"Error: Target track {next_file_path} not found in track_players dictionary.")
+        else:
+            # Re-activate the current track's play button if we are at the boundary and not moving
+            # This handles the case where user clicks next on last track or prev on first.
+            if current_file_path in self.track_players:
+                 current_controls = self.track_players[current_file_path]
+                 # if current_controls['player'].state() != QMediaPlayer.PlayingState: # Only if it's not already playing
+                 #    current_controls['play_button'].setText('▶') # Keep it as play, since nothing happened.
+                 # No, if it was playing, it should resume being active if no move occurs
+                 if current_controls['player'].state() == QMediaPlayer.PausedState : # If it was paused by us
+                    current_card_widget = current_controls.get('card_widget')
+                    if current_card_widget :
+                        # self.play_pause(current_file_path) # This would replay it, not desired.
+                        # We just want to make it look active if it was the one playing
+                        # Actually, the play_pause logic will handle this. If it's paused, clicking play will make it active.
+                        # The current state is fine. No need to auto-replay or force active state here if no move.
+                        pass
+
 
     def go_back(self):
         """
@@ -1100,10 +1418,7 @@ class PlayerWindow(QMainWindow):
         #     if self.playlist:
         #         self.play_track(self.playlist[0]) # Play first track if current not found
 
-    # The duplicate go_back was removed by the tool, this is just a comment placeholder
-    # def go_back(self):
-    #     self.parent.show()
-    #     self.close()
+# The old play_previous and play_next methods are now removed by omitting them.
 
 def main():
     """
@@ -1113,6 +1428,16 @@ def main():
     shows the main window, and starts the application's event loop.
     """
     app = QApplication(sys.argv) # Create the PyQt application
+
+    # Load custom font
+    font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'DynaPuff-Regular.ttf')
+    font_id = QFontDatabase.addApplicationFont(font_path)
+    if font_id == -1:
+        print(f"Warning: Could not load font at {font_path}")
+    else:
+        font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
+        print(f"Font '{font_family}' loaded successfully.")
+
     window = MusicovaApp() # Create the main application window
     window.show() # Display the window
     sys.exit(app.exec_()) # Start the event loop and exit when done
