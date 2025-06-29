@@ -87,12 +87,11 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install System Dependencies (CMake for Linux)
+      - name: Install System Dependencies (CMake and Build Tools for Linux)
         if: matrix.os_runner == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake
-        continue-on-error: false
+          sudo apt-get install -y cmake build-essential python3-dev
 
       # --- macOS fix start ---
       - name: Update Homebrew (macOS)
@@ -113,7 +112,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install -r requirements.txt
+          pip install --no-build-isolation -r requirements.txt
         working-directory: ./Python
         continue-on-error: false
 
