@@ -936,6 +936,9 @@ class MusicovaApp(QMainWindow):
         pygame.quit() # Quit pygame itself
         event.accept()
 
+    main_window = MusicovaApp()
+    main_window.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     # It's good practice to set ApplicationName and OrganizationName for Qt settings, etc.
