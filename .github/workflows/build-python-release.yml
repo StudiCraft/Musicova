@@ -15,17 +15,10 @@ jobs:
       contents: write # Required to create a GitHub Release (write permissions)
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }} # Output the upload URL for subsequent jobs
-      # The commit_sha and release_tag are now directly passed from the run context for clarity
-      # commit_sha: ${{ steps.commit_sha.outputs.SHA }} # No longer needed as an explicit output if using github.sha
       release_tag: ${{ steps.create_release.outputs.tag_name }} # Output the tag for asset naming
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      # Removed 'Get current commit SHA' step as github.sha is directly available.
-      # - name: Get current commit SHA
-      #   id: commit_sha
-      #   run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
@@ -33,13 +26,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
         with:
-          # FIX: Changed tag_name to a more reliable unique identifier that is always a valid Git tag format.
-          # We use github.run_id and github.run_attempt to ensure uniqueness for each workflow run.
-          # github.sha gives the full commit SHA, which is also unique for the release name/body.
-          tag_name: release-${{ github.run_id }}-${{ github.run_attempt }} # Unique and valid tag for this build
-          release_name: Musicova Multi-Platform Build ${{ github.sha }} # Descriptive release name including full SHA
+          # Use github.sha for a more descriptive and unique tag.
+          # The run_id and run_attempt ensure uniqueness even for multiple runs on the same commit.
+          tag_name: build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          release_name: Musicova Multi-Platform Build ${{ github.sha }}
           body: |
-            Automated multi-platform build of musicova.py executable from commit ${{ github.sha }}.
+            Automated multi-platform build of musicova.py executable from commit `${{ github.sha }}`.
             This release includes builds for Windows, Linux, and macOS.
             ---
             **To run:**
@@ -48,21 +40,18 @@ jobs:
             * For macOS: `musicova-macos-${{ github.sha }}`
             * For Linux: `musicova-ubuntu-${{ github.sha }}`
             ---
-            See changes in the Python folder.
-          draft: false # Set to true if you want to manually publish later
-          prerelease: false # Set to true for pre-release builds
+            See changes in the `Python` folder.
+          draft: false
+          prerelease: false
 
   # Job 2: Build and upload executables for each OS (runs in parallel)
   build-and-upload:
-    # This job depends on the 'create-github-release' job completing successfully.
-    # The 'needs' keyword also makes the outputs of 'create-github-release' available.
     needs: create-github-release
     strategy:
+      fail-fast: false # Allows other matrix jobs to complete even if one fails
       matrix:
-        # Define the operating systems to build on.
-        # Each OS in this list will run a separate instance of this job.
         os: [windows-latest, ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }} # Run each build on its respective OS runner
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write # Required to upload assets to the release
     steps:
@@ -72,38 +61,60 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x' # Use the latest stable Python 3 version available on the runner
+          python-version: '3.13' # Explicitly use Python 3.13 as per your error message, or '3.x' for latest stable 3.x
 
-      - name: Install dependencies
+      # Conditionally install build tools based on OS
+      - name: Install build tools (Ubuntu)
+        if: runner.os == 'Linux' # This applies to ubuntu-latest
         run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake # Required by tksvg for compilation
+          # Add any other system dependencies your Python packages might need here for Ubuntu
+        # Add error handling to this step
+        continue-on-error: false # Fail the workflow if basic tools can't be installed
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS' # This applies to macos-latest
+        run: |
+          brew install cmake # Required by tksvg for compilation
+          # Add any other system dependencies your Python packages might need here for macOS
+        # Add error handling to this step
+        continue-on-error: false
+
+      - name: Install Python dependencies
+        run: |
+          # Upgrade pip first, though often not strictly necessary if already up to date
           python -m pip install --upgrade pip
+          # Install pyinstaller globally or in the current environment
           pip install pyinstaller
-          # --- IMPORTANT ---
-          # If your Python script (musicova.py) uses any other third-party libraries,
-          # create a 'requirements.txt' file in your 'Python/' directory like this:
-          # your-library-name==1.0.0
-          # another-library
-          # Then, uncomment the following line:
+          # Install other dependencies from requirements.txt
+          # Make sure 'requirements.txt' is in the 'Python/' directory
           pip install -r requirements.txt
         working-directory: ./Python # Ensure pip install runs from the Python directory
+        # Add error handling to this step
+        continue-on-error: false # Fail the workflow if Python deps can't be installed
 
       - name: Compile Python script to executable
         run: pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
-        # --onefile: Creates a single executable file.
-        # --windowed: Suppresses the console window (primarily for GUI apps on Windows/macOS).
-        #             For Linux console apps, you might remove this or use --noconsole.
-        #             If your app is GUI, --windowed is generally good.
-        # --add-data: Properly bundles the font file. Ensure 'fonts/DynaPuff-Regular.ttf' path is correct relative to musicova.py.
         working-directory: ./Python # PyInstaller will output build artifacts to ./Python/dist/
+        # Add error handling to this step
+        continue-on-error: false # Fail the workflow if compilation fails
+
+      - name: Rename executable for consistent naming (Linux/macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        run: |
+          mv ./Python/dist/musicova ./Python/dist/musicova-${{ matrix.os == 'ubuntu-latest' && 'ubuntu' || 'macos' }}
+        # This helps ensure the output name matches the asset_name logic for non-Windows builds
 
       - name: Upload Executable to Release
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
         with:
-          # Get the upload URL from the 'create-github-release' job's output
           upload_url: ${{ needs.create-github-release.outputs.upload_url }}
-          # Dynamically set asset_path and asset_name based on the current OS in the matrix
-          asset_path: ./Python/dist/musicova${{ matrix.os == 'windows-latest' && '.exe' || '' }} # Adds .exe for Windows, no extension for others
-          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}-${{ github.sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          asset_path: |
+            ./Python/dist/musicova${{ matrix.os == 'windows-latest' && '.exe' || '' }}${{ matrix.os == 'Linux' && format('-{0}', 'ubuntu') || '' }}${{ matrix.os == 'macOS' && format('-{0}', 'macos') || '' }}
+          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'ubuntu' || 'macos' }}-${{ github.sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
           asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/vnd.microsoft.portable-executable' || 'application/octet-stream' }}
+        # Add error handling to this step
+        continue-on-error: false # Fail the workflow if asset upload fails
