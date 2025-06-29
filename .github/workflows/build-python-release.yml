@@ -9,8 +9,8 @@ on:
 permissions: # <--- ADD THIS BLOCK HERE
   contents: write # Grants write access to repository content (including releases)
   # You might also need:
-  # actions: write # If your release creates or modifies other workflow-related actions
-  # deployments: write # If releases are tied to deployments
+  actions: write # If your release creates or modifies other workflow-related actions
+  deployments: write # If releases are tied to deployments
 jobs:
   # Job 1: Create the GitHub Release (runs only once)
   create-github-release:
