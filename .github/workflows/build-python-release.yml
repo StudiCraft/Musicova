@@ -13,40 +13,17 @@ permissions: # <--- ADD THIS BLOCK HERE
   deployments: write # If releases are tied to deployments
 jobs:
   # Job 1: Create the GitHub Release (runs only once)
-  create-github-release:
-    runs-on: ubuntu-latest # This job can run on any OS, as it only creates the release
-    permissions:
-      contents: write # Required to create a GitHub Release (write permissions)
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }} # Output the upload URL for subsequent jobs
-      release_tag: ${{ steps.create_release.outputs.tag_name }} # Output the tag for asset naming
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
-        with:
-          # Use github.sha for a more descriptive and unique tag.
-          # The run_id and run_attempt ensure uniqueness even for multiple runs on the same commit.
-          tag_name: build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
-          release_name: Musicova Multi-Platform Build ${{ github.sha }}
-          body: |
-            Automated multi-platform build of musicova.py executable from commit `${{ github.sha }}`.
-            This release includes builds for Windows, Linux, and macOS.
-            ---
-            **To run:**
-            Download the appropriate executable for your operating system.
-            * For Windows: `musicova-windows-${{ github.sha }}.exe`
-            * For macOS: `musicova-macos-${{ github.sha }}`
-            * For Linux: `musicova-ubuntu-${{ github.sha }}`
-            ---
-            See changes in the `Python` folder.
-          draft: false
-          prerelease: false
+  - name: Create Release (Debug)
+  id: create_release
+  uses: actions/create-release@v1
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  with:
+    tag_name: test-release-${{ github.run_id }}
+    release_name: Debug Release - ${{ github.sha }}
+    body: This is a debug test release.
+    draft: true # IMPORTANT: Create as draft
+    prerelease: false
 
   # Job 2: Build and upload executables for each OS (runs in parallel)
   build-and-upload:
