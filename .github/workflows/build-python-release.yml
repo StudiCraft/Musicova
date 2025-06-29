@@ -104,6 +104,11 @@ jobs:
         run: brew install cmake
         continue-on-error: false
 
+      - name: Ensure CMake is on PATH (macOS)
+        if: matrix.os_runner == 'macos-latest'
+        run: |
+          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+
       - name: Install TKinter (macOS)
         if: matrix.os_runner == 'macos-latest'
         run: brew install python-tk
