@@ -39,6 +39,10 @@ The project utilizes the following technologies:
 
 ## Getting Started / How to Use
 
+### Installation
+
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/StudiCraft/Musicova?sort=semver)
+
 ### Web Version
 
 1.  Navigate to the `HTML` directory in your file explorer.
