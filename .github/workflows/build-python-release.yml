@@ -6,96 +6,112 @@ on:
       - main # Trigger on pushes to the main branch
     paths:
       - 'Python/**' # Only trigger if changes are made within the Python folder
-permissions: # <--- ADD THIS BLOCK HERE
+
+permissions:
   contents: write # Grants write access to repository content (including releases)
-  # You might also need:
-  actions: write # If your release creates or modifies other workflow-related actions
-  deployments: write # If releases are tied to deployments
+
 jobs:
   # Job 1: Create the GitHub Release (runs only once)
-  - name: Create Release (Debug)
-  id: create_release
-  uses: actions/create-release@v1
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  with:
-    tag_name: test-release-${{ github.run_id }}
-    release_name: Debug Release - ${{ github.sha }}
-    body: This is a debug test release.
-    draft: true # IMPORTANT: Create as draft
-    prerelease: false
+  create-github-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Explicitly specify for this job too for clarity, though inherited from workflow-level
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_tag: ${{ steps.create_release.outputs.tag_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # Already at v4, which is the latest stable major
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2 # Updated from actions/create-release@v1 to softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Musicova Multi-Platform Build ${{ github.sha }} # 'name' for softprops/action-gh-release, not 'release_name'
+          body: |
+            Automated multi-platform build of musicova.py executable from commit `${{ github.sha }}`.
+            This release includes builds for Windows, Linux, and macOS.
+            ---
+            **To run:**
+            Download the appropriate executable for your operating system.
+            * For Windows: `musicova-windows-${{ github.sha }}.exe`
+            * For macOS: `musicova-macos-${{ github.sha }}`
+            * For Linux: `musicova-ubuntu-${{ github.sha }}`
+            ---
+            See changes in the `Python` folder.
+          draft: false
+          prerelease: false
 
   # Job 2: Build and upload executables for each OS (runs in parallel)
   build-and-upload:
     needs: create-github-release
     strategy:
-      fail-fast: false # Allows other matrix jobs to complete even if one fails
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write # Required to upload assets to the release
+      contents: write # Explicitly specify for this job too for clarity
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Already at v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5 # Updated from v5 to v5 (latest stable major)
         with:
-          python-version: '3.13' # Explicitly use Python 3.13 as per your error message, or '3.x' for latest stable 3.x
+          python-version: '3.13' # Or '3.x' for latest stable 3.x
 
-      # Conditionally install build tools based on OS
       - name: Install build tools (Ubuntu)
-        if: runner.os == 'Linux' # This applies to ubuntu-latest
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake # Required by tksvg for compilation
-          # Add any other system dependencies your Python packages might need here for Ubuntu
-        # Add error handling to this step
-        continue-on-error: false # Fail the workflow if basic tools can't be installed
+          sudo apt-get install -y cmake
+        continue-on-error: false
 
       - name: Install build tools (macOS)
-        if: runner.os == 'macOS' # This applies to macos-latest
+        if: runner.os == 'macOS'
         run: |
-          brew install cmake # Required by tksvg for compilation
-          # Add any other system dependencies your Python packages might need here for macOS
-        # Add error handling to this step
+          brew install cmake
         continue-on-error: false
 
       - name: Install Python dependencies
         run: |
-          # Upgrade pip first, though often not strictly necessary if already up to date
           python -m pip install --upgrade pip
-          # Install pyinstaller globally or in the current environment
           pip install pyinstaller
-          # Install other dependencies from requirements.txt
-          # Make sure 'requirements.txt' is in the 'Python/' directory
           pip install -r requirements.txt
-        working-directory: ./Python # Ensure pip install runs from the Python directory
-        # Add error handling to this step
-        continue-on-error: false # Fail the workflow if Python deps can't be installed
+        working-directory: ./Python
+        continue-on-error: false
 
       - name: Compile Python script to executable
         run: pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
-        working-directory: ./Python # PyInstaller will output build artifacts to ./Python/dist/
-        # Add error handling to this step
-        continue-on-error: false # Fail the workflow if compilation fails
+        working-directory: ./Python
+        continue-on-error: false
 
       - name: Rename executable for consistent naming (Linux/macOS)
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
-          mv ./Python/dist/musicova ./Python/dist/musicova-${{ matrix.os == 'ubuntu-latest' && 'ubuntu' || 'macos' }}
-        # This helps ensure the output name matches the asset_name logic for non-Windows builds
+          # Use `find` to locate the executable name, as PyInstaller might append version info or other suffixes
+          # This helps in robustly finding the output file regardless of exact PyInstaller naming conventions.
+          EXECUTABLE_NAME=$(find ./Python/dist -maxdepth 1 -type f -name "musicova*" -not -name "*.zip" -not -name "*.tar.gz" -print -quit)
+          if [ -z "$EXECUTABLE_NAME" ]; then
+            echo "Error: musicova executable not found in ./Python/dist after compilation."
+            exit 1
+          fi
+          mv "$EXECUTABLE_NAME" ./Python/dist/musicova-${{ matrix.os == 'ubuntu-latest' && 'ubuntu' || 'macos' }}
+        continue-on-error: false
 
       - name: Upload Executable to Release
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2 # Updated from actions/upload-release-asset@v1 to softprops/action-gh-release@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the automatically provided GitHub Token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-github-release.outputs.upload_url }}
-          asset_path: |
+          # For softprops/action-gh-release, you attach assets directly to the created release tag.
+          # The upload_url output from the previous job is not used directly here.
+          # Instead, we rely on the action automatically finding the release based on the tag or release ID.
+          # Using files: with glob patterns for flexibility.
+          files: |
             ./Python/dist/musicova${{ matrix.os == 'windows-latest' && '.exe' || '' }}${{ matrix.os == 'Linux' && format('-{0}', 'ubuntu') || '' }}${{ matrix.os == 'macOS' && format('-{0}', 'macos') || '' }}
-          asset_name: musicova-${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'ubuntu-latest' && 'ubuntu' || 'macos' }}-${{ github.sha }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-          asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/vnd.microsoft.portable-executable' || 'application/octet-stream' }}
-        # Add error handling to this step
-        continue-on-error: false # Fail the workflow if asset upload fails
+        continue-on-error: false
