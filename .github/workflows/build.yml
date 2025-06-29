@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
-      release_tag: ${{ steps.generate_tag_name.outputs.tag_name }} # Propagate the originally generated tag
+      release_tag: ${{ steps.generate_tag_name.outputs.tag_name }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -29,17 +29,18 @@ jobs:
           RELEASE_TAG="release-${RELEASE_DATE}-${SHORT_SHA}"
           RELEASE_NAME="Musicova Multi-Platform Build ${{ github.sha }}"
           RELEASE_BODY=$(cat <<EOF
-            Automated multi-platform build of Musicova (PyQt5 version) executable from commit `${{ github.sha }}`.
+            Automated multi-platform build of Musicova (PyQt5 version) executable from commit \`${{ github.sha }}\`.
 
             This release includes builds for Windows, Linux, and macOS.
+
             ---
             **To run:**
             Download the appropriate executable for your operating system.
-            * For Windows: `musicova-windows-${{ github.sha }}.exe`
-            * For macOS: `musicova-macos-${{ github.sha }}`
-            * For Linux: `musicova-ubuntu-${{ github.sha }}`
+            * For Windows: \`musicova-windows-${{ github.sha }}.zip\`
+            * For macOS: \`musicova-macos-${{ github.sha }}.dmg\`
+            * For Linux: \`musicova-ubuntu-${{ github.sha }}.zip\`
             ---
-            See changes in the `Python` folder.
+            See changes in the \`Python\` folder.
           EOF
           )
           echo "tag_name=${RELEASE_TAG}" >> $GITHUB_OUTPUT
@@ -48,6 +49,11 @@ jobs:
           echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag "$RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
+
       - name: Create GitHub Release
         id: create_gh_release
         uses: softprops/action-gh-release@v2
@@ -55,8 +61,6 @@ jobs:
           tag_name: ${{ steps.generate_tag_name.outputs.tag_name }}
           name: ${{ steps.generate_tag_name.outputs.release_name }}
           body: ${{ steps.generate_tag_name.outputs.release_body }}
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -72,27 +76,30 @@ jobs:
             executable_suffix: '.exe'
             release_asset_name_os_part: windows
             pyinstaller_output_name: musicova.exe
+            package_type: zip
           - os_runner: ubuntu-latest
             os_display_name: Ubuntu Linux
             executable_suffix: ''
             release_asset_name_os_part: ubuntu
             pyinstaller_output_name: musicova
+            package_type: zip
           - os_runner: macos-latest
             os_display_name: macOS
             executable_suffix: ''
             release_asset_name_os_part: macos
-            pyinstaller_output_name: musicova
+            pyinstaller_output_name: musicova.app
+            package_type: dmg
     runs-on: ${{ matrix.os_runner }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11 # Using 3.11 for broader PyQt5 compatibility via pip
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install System Dependencies (Linux - PyQt5 and build tools)
+      - name: Install System Dependencies (Linux)
         if: matrix.os_runner == 'ubuntu-latest'
         run: |
           sudo apt-get update
@@ -101,30 +108,39 @@ jobs:
             libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-render-util0 libxcb-shape0 libxkbcommon-x11-0
 
-      - name: Install System Dependencies (CMake for macOS)
+      - name: Install System Dependencies (macOS)
         if: matrix.os_runner == 'macos-latest'
         run: |
           brew update
-          brew install cmake
-
-      - name: Ensure CMake is on PATH (macOS)
-        if: matrix.os_runner == 'macos-latest'
-        run: |
-          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+          brew install cmake create-dmg
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install wheel setuptools
-          pip install pyinstaller
-          # Attempt to install PyQt5 via pip first for all OS for consistency
-          # For Linux, system python3-pyqt5 is a fallback if pip version has issues with system libs
-          pip install PyQt5 # This will be used by PyInstaller
+          pip install wheel setuptools pyinstaller PyQt5
           pip install --no-build-isolation -r requirements.txt
         working-directory: ./Python
-        continue-on-error: false
 
-      - name: Compile Python Script to Executable
+      - name: Compile Python Script to Executable (Windows)
+        if: matrix.os_runner == 'windows-latest'
+        run: |
+          $command = @'
+          pyinstaller --onefile --windowed --name musicova musicova_python_app.py `
+            --add-data "fonts/DynaPuff-Regular.ttf;fonts" `
+            --add-data "Musicova logo v2.png;." `
+            --hidden-import=PyQt5.sip `
+            --hidden-import=PyQt5.QtCore `
+            --hidden-import=PyQt5.QtGui `
+            --hidden-import=PyQt5.QtWidgets `
+            --hidden-import=PyQt5.QtSvg `
+            --hidden-import=pkg_resources.py2_warn
+          '@
+          Invoke-Expression $command
+        shell: pwsh
+        working-directory: ./Python
+
+      - name: Compile Python Script to Executable (Linux/macOS)
+        if: matrix.os_runner != 'windows-latest'
         run: |
           pyinstaller --onefile --windowed --name musicova musicova_python_app.py \
             --add-data "fonts/DynaPuff-Regular.ttf:fonts" \
@@ -134,37 +150,43 @@ jobs:
             --hidden-import=PyQt5.QtGui \
             --hidden-import=PyQt5.QtWidgets \
             --hidden-import=PyQt5.QtSvg \
-            --hidden-import=pkg_resources.py2_warn # Often needed for PyInstaller stability
+            --hidden-import=pkg_resources.py2_warn
         working-directory: ./Python
-        continue-on-error: false
 
-      - name: Set Executable Permissions (Linux/macOS)
-        if: matrix.os_runner == 'ubuntu-latest' || matrix.os_runner == 'macos-latest'
-        run: chmod +x ./Python/dist/${{ matrix.pyinstaller_output_name }}
-
-      - name: Rename Executable for Release Asset Naming
-        id: rename_executable
+      - name: Create .dmg from .app (macOS only)
+        if: matrix.os_runner == 'macos-latest'
         run: |
-          FINAL_ASSET_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}${{ matrix.executable_suffix }}"
-          PYINSTALLER_OUTPUT_PATH="./Python/dist/${{ matrix.pyinstaller_output_name }}"
+          mkdir -p dist_dmg
+          cp -R ./Python/dist/musicova.app dist_dmg/
+          create-dmg \
+            --volname "Musicova" \
+            --volicon "Musicova logo v2.png" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon "musicova.app" 200 190 \
+            --hide-extension "musicova.app" \
+            --app-drop-link 600 185 \
+            "./Python/dist/musicova.dmg" \
+            "dist_dmg/"
 
-          if [ ! -f "$PYINSTALLER_OUTPUT_PATH" ]; then
-            echo "Error: PyInstaller executable not found at $PYINSTALLER_OUTPUT_PATH."
-            ls -lha ./Python/dist/ # List directory contents for debugging
-            exit 1
+      - name: Package Executable for Release
+        id: package_executable
+        run: |
+          cd ./Python/dist
+          if [[ "${{ matrix.package_type }}" == "zip" ]]; then
+            FINAL_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}.zip"
+            zip -r "$FINAL_NAME" "${{ matrix.pyinstaller_output_name }}"
+          else
+            FINAL_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}.dmg"
+            mv musicova.dmg "$FINAL_NAME"
           fi
-          mv "$PYINSTALLER_OUTPUT_PATH" "./Python/dist/$FINAL_ASSET_NAME"
-          echo "final_asset_path=./Python/dist/$FINAL_ASSET_NAME" >> $GITHUB_OUTPUT
-        continue-on-error: false
-
-      - name: DEBUG - Show received tag
-        run: echo "Received tag for upload: ${{ needs.create-release.outputs.release_tag }}"
+          echo "final_asset_path=./Python/dist/$FINAL_NAME" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Upload Executable to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.create-release.outputs.release_tag }}
-          files: ${{ steps.rename_executable.outputs.final_asset_path }}
+          files: ${{ steps.package_executable.outputs.final_asset_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: false
