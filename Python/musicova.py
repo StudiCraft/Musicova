@@ -557,10 +557,10 @@ class PlayerWindow(QMainWindow):
         volume_slider.setRange(0, 100) # QMediaPlayer volume is 0-100
         volume_slider.setValue(100)    # Default volume 100%
         # volume_slider.setStyleSheet(""" # Styling moved to apply_theme
-            #QSlider::groove:horizontal {
-                #background: #555555; /* Darker groove for visibility */
-                height: 8px;
-                border-radius: 4px;
+            QSlider::groove:horizontal {
+              background: #555555; /* Darker groove for visibility */
+              height: 8px;
+              border-radius: 4px;
             }
             QSlider::sub-page:horizontal {
                 background: #8a2be2; /* Theme color for played part */
