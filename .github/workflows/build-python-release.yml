@@ -1,9 +1,5 @@
-# .github/workflows/multi-platform-release.yml
-
 name: Multi-Platform Executable Release
 
-# Trigger the workflow on pushes to the 'main' branch,
-# but only if changes are within the 'Python/' directory.
 on:
   push:
     branches:
@@ -11,19 +7,14 @@ on:
     paths:
       - 'Python/**'
 
-# Define permissions for the GITHUB_TOKEN for all jobs in this workflow.
-# 'contents: write' is essential for creating and uploading to releases.
 permissions:
   contents: write
 
 jobs:
-  # Job 1: Create the initial GitHub Release.
-  # This job runs first and its output (upload_url, tag_name) is used by subsequent jobs.
   create-release:
     name: Create GitHub Release
-    runs-on: ubuntu-latest # A single, lightweight runner is sufficient for creating the release.
+    runs-on: ubuntu-latest
     outputs:
-      # Capture the upload URL and tag name for use in asset uploading jobs.
       upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
       release_tag: ${{ steps.create_gh_release.outputs.tag_name }}
     steps:
@@ -33,8 +24,6 @@ jobs:
       - name: Generate Release Tag and Name
         id: generate_tag_name
         run: |
-          # Use github.sha for a unique and traceable release name.
-          # For the tag, combine branch name, run ID, and run attempt for maximum uniqueness and re-run safety.
           RELEASE_TAG="build-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
           RELEASE_NAME="Musicova Multi-Platform Build ${{ github.sha }}"
           RELEASE_BODY=$(cat <<EOF
@@ -58,30 +47,23 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        id: create_gh_release # Give this step an ID to reference its outputs
-        uses: softprops/action-gh-release@v2 # Recommended action for GitHub Releases
+        id: create_gh_release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.generate_tag_name.outputs.tag_name }}
           name: ${{ steps.generate_tag_name.outputs.release_name }}
           body: ${{ steps.generate_tag_name.outputs.release_body }}
-          draft: false # Set to 'true' if you want to manually publish later
-          prerelease: false # Set to 'true' for pre-release builds
+          draft: false
+          prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the token provided by GitHub Actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Job 2: Build executables for different operating systems and upload them as release assets.
   build-executables:
     name: Build on ${{ matrix.os_display_name }}
-    needs: create-release # This job depends on the 'create-release' job completing successfully.
-                          # This also makes 'create-release' job's outputs available via 'needs.create-release.outputs'.
+    needs: create-release
     strategy:
-      fail-fast: false # Allow other matrix jobs to continue even if one fails.
+      fail-fast: false
       matrix:
-        # Define the operating systems for parallel builds.
-        # os_runner: The GitHub Actions runner label (e.g., ubuntu-latest).
-        # os_display_name: A human-readable name for display in the workflow UI.
-        # executable_suffix: The suffix PyInstaller generates (e.g., .exe for Windows).
-        # release_asset_name_os_part: The part of the asset name specific to the OS (e.g., windows, ubuntu).
         include:
           - os_runner: windows-latest
             os_display_name: Windows
@@ -89,11 +71,11 @@ jobs:
             release_asset_name_os_part: windows
           - os_runner: ubuntu-latest
             os_display_name: Ubuntu Linux
-            executable_suffix: '' # No extension for Linux
+            executable_suffix: ''
             release_asset_name_os_part: ubuntu
           - os_runner: macos-latest
             os_display_name: macOS
-            executable_suffix: '' # No extension for macOS
+            executable_suffix: ''
             release_asset_name_os_part: macos
     runs-on: ${{ matrix.os_runner }}
     steps:
@@ -103,75 +85,66 @@ jobs:
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13' # Explicitly use Python 3.13
+          python-version: '3.13'
 
       - name: Install System Dependencies (CMake for Linux)
         if: matrix.os_runner == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake # Required for packages like 'tksvg'
-        # Fail the job immediately if essential system dependencies cannot be installed.
+          sudo apt-get install -y cmake
         continue-on-error: false
+
+      # --- macOS fix start ---
+      - name: Update Homebrew (macOS)
+        if: matrix.os_runner == 'macos-latest'
+        run: brew update
 
       - name: Install System Dependencies (CMake for macOS)
         if: matrix.os_runner == 'macos-latest'
-        run: |
-          brew install cmake # Required for packages like 'tksvg'
-        # Fail the job immediately if essential system dependencies cannot be installed.
+        run: brew install cmake
         continue-on-error: false
+
+      - name: Add Homebrew to PATH (macOS)
+        if: matrix.os_runner == 'macos-latest'
+        run: echo "/usr/local/bin" >> $GITHUB_PATH
+      # --- macOS fix end ---
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller # Install PyInstaller globally in the virtual environment
-          # Install other project-specific dependencies from requirements.txt
-          # Ensure your 'requirements.txt' is in the 'Python/' directory.
+          pip install pyinstaller
           pip install -r requirements.txt
-        working-directory: ./Python # Run pip install from the Python project directory
-        # Fail the job immediately if Python dependencies cannot be installed.
+        working-directory: ./Python
         continue-on-error: false
 
       - name: Compile Python Script to Executable
         run: |
-          # --onefile: Creates a single executable file.
-          # --windowed: Suppresses the console window (good for GUI apps).
-          # --add-data: Bundles additional files. Path is source:destination within the bundle.
           pyinstaller --onefile --windowed musicova.py --add-data "fonts/DynaPuff-Regular.ttf:fonts"
-        working-directory: ./Python # PyInstaller outputs to ./Python/dist/
-        # Fail the job immediately if compilation fails.
+        working-directory: ./Python
         continue-on-error: false
 
       - name: Set Executable Permissions (Linux/macOS)
         if: matrix.os_runner == 'ubuntu-latest' || matrix.os_runner == 'macos-latest'
-        run: chmod +x ./Python/dist/musicova # Make the generated executable runnable
+        run: chmod +x ./Python/dist/musicova
 
       - name: Rename Executable for Release Asset Naming
         id: rename_executable
         run: |
-          # Construct the desired final asset name.
           FINAL_ASSET_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}${{ matrix.executable_suffix }}"
-
-          # Find the PyInstaller output file. PyInstaller usually names it after the script.
-          # Use `find` for robustness, in case PyInstaller adds any specific suffixes.
           PYINSTALLER_OUTPUT_PATH=$(find ./Python/dist -maxdepth 1 -type f -name "musicova*" -print -quit)
-
           if [ -z "$PYINSTALLER_OUTPUT_PATH" ]; then
             echo "Error: PyInstaller executable not found in ./Python/dist."
             exit 1
           fi
-
-          # Rename the found executable to the desired final asset name.
           mv "$PYINSTALLER_OUTPUT_PATH" "./Python/dist/$FINAL_ASSET_NAME"
           echo "final_asset_path=./Python/dist/$FINAL_ASSET_NAME" >> $GITHUB_OUTPUT
-        continue-on-error: false # Fail if renaming fails
+        continue-on-error: false
 
       - name: Upload Executable to GitHub Release
-        uses: softprops/action-gh-release@v2 # Use the same action that created the release
+        uses: softprops/action-gh-release@v2
         with:
-          # Use the tag name from the 'create-release' job to target the correct release.
           tag_name: ${{ needs.create-release.outputs.release_tag }}
-          # Upload the renamed executable.
           files: ${{ steps.rename_executable.outputs.final_asset_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: false # Fail if asset upload fails
+        continue-on-error: false
