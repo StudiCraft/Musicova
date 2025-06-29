@@ -20,7 +20,7 @@ THEME_COLORS = {
         "progress_bg": "#e0e0e0", "progress_fill": "blueviolet", "font_family": "DynaPuff",
         "font_size_title": 48, "font_size_subtitle": 24, "font_size_button": 14,
         "font_size_player_title": 36, "font_size_track_name": 16, "font_size_time": 11,
-        "font_size_icon_button": 20,
+        "font_size_icon_button": 10,
     },
     "dark": {
         "bg": "#1a1a1a", "text": "white", "button_bg": "#3d3d3d", "button_text": "white",
