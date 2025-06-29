@@ -92,6 +92,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake build-essential python3-dev
+          sudo apt-get install python3-tk
 
       # --- macOS fix start ---
       - name: Update Homebrew (macOS)
@@ -101,6 +102,11 @@ jobs:
       - name: Install System Dependencies (CMake for macOS)
         if: matrix.os_runner == 'macos-latest'
         run: brew install cmake
+        continue-on-error: false
+
+      - name: Install TKinter (macOS)
+        if: matrix.os_runner == 'macos-latest'
+        run: brew install python-tk
         continue-on-error: false
 
       - name: Add Homebrew to PATH (macOS)
