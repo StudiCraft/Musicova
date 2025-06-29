@@ -1,66 +1,22 @@
-name: Multi-Platform Executable Release
+name: Build and Release Musicova
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'Python/**'
-
-permissions:
-  contents: write
+    tags:
+      - 'v*' # Only run when a tag starting with 'v' is pushed
 
 jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
-      release_tag: ${{ steps.generate_tag_name.outputs.tag_name }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Generate Release Tag and Name
-        id: generate_tag_name
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          RELEASE_DATE=$(date +'%Y%m%d')
-          RELEASE_TAG="release-${RELEASE_DATE}-${SHORT_SHA}"
-          RELEASE_NAME="Musicova Multi-Platform Build ${{ github.sha }}"
-          RELEASE_BODY=$(cat <<EOF
-            Automated multi-platform build of Musicova (PyQt5 version) executable from commit \`${{ github.sha }}\`.
-
-            This release includes builds for Windows, Linux, and macOS.
-
-            ---
-            **To run:**
-            Download the appropriate executable for your operating system.
-            * For Windows: \`musicova-windows-${{ github.sha }}.zip\`
-            * For macOS: \`musicova-macos-${{ github.sha }}.dmg\`
-            * For Linux: \`musicova-ubuntu-${{ github.sha }}.zip\`
-            ---
-            See changes in the \`Python\` folder.
-          EOF
-          )
-          echo "tag_name=${RELEASE_TAG}" >> $GITHUB_OUTPUT
-          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
-          echo "release_body<<EOF" >> $GITHUB_OUTPUT
-          echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag "$RELEASE_TAG"
-          git push origin "$RELEASE_TAG"
-
-      - name: Create GitHub Release
-        id: create_gh_release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.generate_tag_name.outputs.tag_name }}
-          name: ${{ steps.generate_tag_name.outputs.release_name }}
-          body: ${{ steps.generate_tag_name.outputs.release_body }}
+          tag_name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -153,40 +109,5 @@ jobs:
             --hidden-import=pkg_resources.py2_warn
         working-directory: ./Python
 
-      - name: Create .dmg from .app (macOS only)
-        if: matrix.os_runner == 'macos-latest'
-        run: |
-          mkdir -p dist_dmg
-          cp -R ./Python/dist/musicova.app dist_dmg/
-          create-dmg \
-            --volname "Musicova" \
-            --volicon "Musicova logo v2.png" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon "musicova.app" 200 190 \
-            --hide-extension "musicova.app" \
-            --app-drop-link 600 185 \
-            "./Python/dist/musicova.dmg" \
-            "dist_dmg/"
-
-      - name: Package Executable for Release
-        id: package_executable
-        run: |
-          cd ./Python/dist
-          if [[ "${{ matrix.package_type }}" == "zip" ]]; then
-            FINAL_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}.zip"
-            zip -r "$FINAL_NAME" "${{ matrix.pyinstaller_output_name }}"
-          else
-            FINAL_NAME="musicova-${{ matrix.release_asset_name_os_part }}-${{ github.sha }}.dmg"
-            mv musicova.dmg "$FINAL_NAME"
-          fi
-          echo "final_asset_path=./Python/dist/$FINAL_NAME" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Upload Executable to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.create-release.outputs.release_tag }}
-          files: ${{ steps.package_executable.outputs.final_asset_path }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Add packaging and release steps as needed...
+      
