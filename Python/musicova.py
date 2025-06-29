@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QLabel,
                              QVBoxLayout, QWidget, QFileDialog, QComboBox,
                              QScrollArea, QHBoxLayout, QSlider, QGridLayout)
 from PyQt5.QtCore import Qt, QUrl, QSettings
- from PyQt5.QtGui import QIcon, QPixmap, QTransform, QFontDatabase # Added QFontDatabase
+from PyQt5.QtGui import QIcon, QPixmap, QTransform, QFontDatabase # Added QFontDatabase
 from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 
