@@ -886,6 +886,7 @@ class MusicovaApp(QMainWindow):
             self.handle_track_ended(self.currently_playing_widget)
 
 
+
     def handle_track_ended(self, track_widget):
         if track_widget == self.currently_playing_widget:
             track_widget.stop(self.audio_channel) # Visually reset it
@@ -936,6 +937,9 @@ class MusicovaApp(QMainWindow):
         pygame.quit() # Quit pygame itself
         event.accept()
 
+    main_window = MusicovaApp()
+    main_window.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     # It's good practice to set ApplicationName and OrganizationName for Qt settings, etc.
